@@ -1,0 +1,32 @@
+{
+  "name": "oneshot",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Browser multiplayer FPS — Three.js client, authoritative Node server",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n SERVER,CLIENT -c cyan,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm --workspace @oneshot/server run dev",
+    "dev:client": "npm --workspace @oneshot/client run dev",
+    "build": "npm --workspace @oneshot/client run build",
+    "start": "npm --workspace @oneshot/server run start",
+    "test": "npm run test:shared && npm run test:server",
+    "test:shared": "tsx packages/shared/test/run.ts",
+    "test:server": "tsx packages/server/test/room.ts",
+    "smoke": "tsx packages/server/test/smoke.ts",
+    "typecheck": "tsc -p packages/shared --noEmit && tsc -p packages/server --noEmit && tsc -p packages/client --noEmit"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

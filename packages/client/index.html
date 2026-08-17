@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1b1a24" />
+    <title>ONESHOT.io — Multiplayer Online FPS</title>
+    <meta
+      name="description"
+      content="ONESHOT.io is a free multiplayer online first-person shooter you play straight in the browser. No download, no install."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Encode+Sans+Semi+Condensed:wght@400;500;600;700;800&family=Open+Sans:wght@400;600;700&display=swap"
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231b1a24'/%3E%3Ccircle cx='32' cy='32' r='17' fill='none' stroke='%23f2c14e' stroke-width='4'/%3E%3Cpath d='M32 6v12M32 46v12M6 32h12M46 32h12' stroke='%23f2c14e' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23e0524a'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+
+    <!-- ── In-game HUD ──────────────────────────────────────────────────── -->
+    <div id="hud" class="hidden" aria-hidden="true">
+      <div id="crosshair">
+        <i class="ch ch-t"></i><i class="ch ch-b"></i><i class="ch ch-l"></i><i class="ch ch-r"></i>
+        <i class="ch-dot"></i>
+      </div>
+      <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+      <div id="scope" class="hidden"><i class="scope-glass"></i><i class="scope-v"></i><i class="scope-h"></i><i class="scope-dot"></i></div>
+
+      <div id="dmg-vignette"></div>
+      <div id="dmg-dirs"></div>
+      <div id="dmg-nums"></div>
+
+      <div id="topbar">
+        <div id="score-a" class="score">0</div>
+        <div id="clock">10:00</div>
+        <div id="score-b" class="score">0</div>
+      </div>
+      <div id="mode-label">Free For All</div>
+
+      <div id="radar">
+        <canvas id="radar-canvas" width="220" height="220"></canvas>
+        <div id="radar-ring"></div>
+      </div>
+
+      <div id="killfeed"></div>
+      <div id="notice"></div>
+      <div id="streak"></div>
+
+      <div id="health">
+        <div id="health-bar"><span id="health-fill"></span></div>
+        <div id="health-num">100</div>
+      </div>
+
+      <div id="ammo">
+        <div id="ammo-mag">30</div>
+        <div id="ammo-reserve">/ 120</div>
+        <div id="weapon-name">Ranger</div>
+        <div id="reload-hint" class="hidden">RELOADING</div>
+      </div>
+
+      <div id="slots">
+        <div class="slot" data-slot="0"><b>1</b><span></span></div>
+        <div class="slot" data-slot="1"><b>2</b><span></span></div>
+        <div class="slot" data-slot="2"><b>3</b><span></span></div>
+      </div>
+
+      <div id="stats">
+        <span id="stat-fps">-- fps</span>
+        <span id="stat-ping">-- ms</span>
+      </div>
+
+      <div id="chatlog"></div>
+      <input id="chatinput" class="hidden" maxlength="100" placeholder="Say something…" />
+
+      <div id="deathscreen" class="hidden">
+        <div class="death-card">
+          <div class="death-title">YOU WERE ELIMINATED</div>
+          <div class="death-by">by <b id="death-killer">—</b> <span id="death-weapon"></span></div>
+          <div class="death-timer"><span id="death-count">2.2</span>s</div>
+          <div class="death-hint">Click or press <b>SPACE</b> to redeploy</div>
+        </div>
+      </div>
+
+      <div id="scoreboard" class="hidden">
+        <div class="sb-card">
+          <div class="sb-head">
+            <div class="sb-title"><b>ONE</b>SHOT<i>.io</i></div>
+            <div class="sb-sub"><span id="sb-mode">Free For All</span> · <span id="sb-room">lobby-1</span></div>
+          </div>
+          <div class="sb-cols"><span>#</span><span>Player</span><span>K</span><span>D</span><span>Ping</span></div>
+          <div class="sb-rows" id="sb-rows"></div>
+        </div>
+      </div>
+
+      <div id="matchover" class="hidden">
+        <div class="mo-card">
+          <div class="mo-title">MATCH OVER</div>
+          <div class="mo-winner" id="mo-winner">—</div>
+          <div class="mo-hint">Next match starting…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Main menu ────────────────────────────────────────────────────── -->
+    <div id="menu">
+      <div id="menu-bg"></div>
+
+      <header id="brand">
+        <h1 class="logo"><b>ONE</b><span>SHOT</span><i>.io</i></h1>
+        <p class="tagline">Multiplayer Online FPS</p>
+      </header>
+
+      <main id="menu-body">
+        <section class="panel panel-side" id="panel-controls">
+          <h2>Controls</h2>
+          <ul class="keylist">
+            <li><b>W A S D</b><span>Move</span></li>
+            <li><b>Space</b><span>Jump</span></li>
+            <li><b>Shift</b><span>Sprint</span></li>
+            <li><b>Ctrl / C</b><span>Crouch</span></li>
+            <li><b>Mouse 1</b><span>Fire</span></li>
+            <li><b>Mouse 2</b><span>Aim</span></li>
+            <li><b>R</b><span>Reload</span></li>
+            <li><b>1 2 3</b><span>Weapon</span></li>
+            <li><b>Q</b><span>Last weapon</span></li>
+            <li><b>Tab</b><span>Scoreboard</span></li>
+            <li><b>T</b><span>Chat</span></li>
+            <li><b>Esc</b><span>Menu</span></li>
+          </ul>
+        </section>
+
+        <section class="panel panel-main">
+          <label class="field">
+            <span class="field-label">Name</span>
+            <input id="name-input" maxlength="16" placeholder="Guest" autocomplete="off" spellcheck="false" />
+          </label>
+
+          <div class="field">
+            <span class="field-label">Mode</span>
+            <div class="segmented" id="mode-select">
+              <button type="button" data-mode="0" class="on">Free For All</button>
+              <button type="button" data-mode="1">Team Deathmatch</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="field-label">Party <em class="field-hint">optional — same code, same team</em></span>
+            <div class="party-row">
+              <input
+                id="room-input"
+                maxlength="12"
+                placeholder="Public match"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="Party code"
+              />
+              <button id="room-new" type="button" class="btn btn-ghost">New code</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="field-label">Primary weapon</span>
+            <div class="weapons" id="weapon-select"></div>
+          </div>
+
+          <button id="play" type="button" class="btn btn-primary">
+            <span>PLAY</span>
+            <em id="play-sub">Free For All</em>
+          </button>
+
+          <div class="menu-actions">
+            <button id="open-settings" type="button" class="btn btn-ghost">Settings</button>
+            <button id="open-help" type="button" class="btn btn-ghost">How to play</button>
+          </div>
+
+          <p id="online" class="online"><i></i><span>connecting…</span></p>
+        </section>
+
+        <section class="panel panel-side" id="panel-weapon">
+          <h2>Loadout</h2>
+          <div id="weapon-card"></div>
+        </section>
+      </main>
+
+      <footer id="menu-foot">
+        <span>An original browser FPS. Built with Three.js.</span>
+        <span id="foot-build"></span>
+      </footer>
+    </div>
+
+    <!-- ── Modals ───────────────────────────────────────────────────────── -->
+    <div id="settings-modal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2>Settings</h2>
+          <button type="button" class="modal-x" data-close>×</button>
+        </div>
+        <nav class="tabs" id="settings-tabs">
+          <button type="button" class="on" data-tab="game">Game</button>
+          <button type="button" data-tab="video">Video</button>
+          <button type="button" data-tab="audio">Audio</button>
+          <button type="button" data-tab="crosshair">Crosshair</button>
+        </nav>
+        <div class="modal-body" id="settings-body"></div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" id="settings-reset">Reset to defaults</button>
+          <button type="button" class="btn btn-primary" data-close>Done</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="help-modal" class="modal hidden">
+      <div class="modal-card modal-narrow">
+        <div class="modal-head">
+          <h2>How to play</h2>
+          <button type="button" class="modal-x" data-close>×</button>
+        </div>
+        <div class="modal-body prose">
+          <p>
+            Move with <b>WASD</b>, look with the mouse, shoot with <b>Mouse&nbsp;1</b>. First to the
+            kill limit wins the round.
+          </p>
+          <h3>Movement</h3>
+          <p>
+            Air control is unrestricted — hold a strafe key and sweep the mouse the same way while
+            airborne to gain speed. Chaining jumps is faster than walking, and moving targets are
+            much harder to hit.
+          </p>
+          <h3>Shooting</h3>
+          <p>
+            Every gun blooms as you fire. Tapping keeps the cone tight; holding the trigger opens it
+            up. Aiming down sights shrinks it hard but slows you down. Headshots do far more damage
+            on everything except the shotgun.
+          </p>
+          <h3>Staying alive</h3>
+          <p>
+            Health regenerates after five quiet seconds. Break line of sight, let it come back, then
+            re-engage. Falling from a great height hurts.
+          </p>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-primary" data-close>Got it</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="pause-modal" class="modal hidden">
+      <div class="modal-card modal-narrow">
+        <div class="modal-head">
+          <h2>Paused</h2>
+        </div>
+        <div class="modal-body pause-body">
+          <button type="button" class="btn btn-primary" id="pause-resume">Resume</button>
+          <button type="button" class="btn btn-ghost" id="pause-settings">Settings</button>
+          <button type="button" class="btn btn-ghost" id="pause-quit">Leave match</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+    <div id="loading"><div class="spinner"></div><span>Loading…</span></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
