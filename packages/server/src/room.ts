@@ -212,6 +212,10 @@ export class Room {
     this.lastSnapshotAt = now;
     this.lastRosterAt = now;
     this.lastMatchAt = now;
+    this.lastLobbyAt = now;
+    // A party gathers first; a public room is already in progress by definition.
+    this.phase = party ? PHASE.LOBBY : PHASE.LIVE;
+    this.botsEnabled = !party;
     for (let i = 0; i < 64; i++) this.hitboxPool.push(makeHitbox());
   }
 
@@ -235,13 +239,28 @@ export class Room {
     return this.overAt > 0;
   }
 
+  /** True while the room is gathering rather than playing a scored match. */
+  get inLobby(): boolean {
+    return this.phase === PHASE.LOBBY;
+  }
+
+  private lobbyFlags(): number {
+    return (this.botsEnabled ? LF.BOTS : 0) | (this.party ? LF.PARTY : 0);
+  }
+
   add(p: ServerPlayer, now: number): void {
     p.team = this.mode === MODE.TDM ? this.teamFor(p) : TEAM_NONE;
     this.players.set(p.id, p);
     p.lastPacketAt = now;
+    p.ready = false;
     this.spawn(p, now);
     this.markRosterDirty();
     if (!p.isBot) {
+      // First human in the room runs it. Bots are skipped for the obvious reason
+      // and one less obvious one: a bot host could never press Start, so a lobby
+      // that handed the role to one would deadlock.
+      if (this.hostId === 0) this.hostId = p.id;
+      this.lobbyDirty = true;
       p.send(
         encodeWelcome({
           id: p.id,
@@ -254,6 +273,7 @@ export class Room {
       );
       this.sendRoster();
       this.sendMatch(now);
+      this.sendLobby(now);
     }
   }
 
@@ -263,7 +283,28 @@ export class Room {
     for (const p of this.players.values()) {
       if (p.lastAttacker === id) p.lastAttacker = -1;
     }
+    if (this.hostId === id) this.promoteHost();
     this.markRosterDirty();
+  }
+
+  /**
+   * Hand the room to the longest-standing remaining human, or to nobody.
+   *
+   * Lowest id wins, which is join order, because ids are handed out in sequence.
+   * `hostId = 0` when the last human leaves is what lets an empty party room be
+   * re-hosted by whoever comes back rather than staying orphaned.
+   */
+  private promoteHost(): void {
+    let next = 0;
+    for (const p of this.players.values()) {
+      if (p.isBot) continue;
+      if (next === 0 || p.id < next) next = p.id;
+    }
+    this.hostId = next;
+    this.lobbyDirty = true;
+    // A countdown started by somebody who has now left still runs: the other
+    // players in the room were already told the match was about to begin, and
+    // silently cancelling it would leave them waiting on a promise that vanished.
   }
 
   private markRosterDirty(): void {
@@ -316,7 +357,10 @@ export class Room {
   /** Top the lobby up with bots, and retire them when humans need the slots. */
   private manageBots(now: number): void {
     const humans = this.humanCount;
-    if (humans === 0) {
+    // Nobody here, or nobody wants them: retire the lot. Both cases go down the
+    // same path deliberately — turning bots off has to be immediate, because the
+    // player who turned them off is looking at the room while they do it.
+    if (humans === 0 || !this.botsEnabled) {
       if (this.bots.size > 0) for (const id of [...this.bots.keys()]) this.remove(id);
       return;
     }
