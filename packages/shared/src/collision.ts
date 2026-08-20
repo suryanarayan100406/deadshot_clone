@@ -109,6 +109,11 @@ export function moveWithCollision(
   result.impactSpeed = 0;
   result.hitWall = false;
 
+  // Detect whether the player started this tick firmly on the ground
+  setPlayerBox(scratch, pos.x, pos.y - GROUND_PROBE, pos.z, radius, height);
+  scratch.maxY = pos.y;
+  const wasGrounded = firstOverlap(scratch, brushes) !== null;
+
   // ── X ────────────────────────────────────────────────────────────────────
   if (vel.x !== 0) {
     const nx = pos.x + vel.x * dt;
@@ -157,6 +162,18 @@ export function moveWithCollision(
     vel.y = 0;
   } else {
     pos.y = ny;
+  }
+
+  // Step-down snapping: when walking down stairs at speed, keep feet planted
+  if (wasGrounded && !result.onGround && vel.y <= 0.0001 && stepHeight > 0) {
+    setPlayerBox(scratch, pos.x, pos.y - stepHeight, pos.z, radius, height);
+    scratch.maxY = pos.y;
+    const downHit = firstOverlap(scratch, brushes);
+    if (downHit && downHit.maxY <= pos.y && downHit.maxY >= pos.y - stepHeight) {
+      pos.y = downHit.maxY + SKIN;
+      result.onGround = true;
+      vel.y = 0;
+    }
   }
 
   // Standing check: probe a thin sliver directly under the feet. Without this,

@@ -1106,16 +1106,22 @@ function buildDustworks(): GameMap {
   lamp(p, WX, fl1H - 0.05, WZ - 6, 0.15);
   lamp(p, WX, fl1H - 0.05, WZ + 6, 0.15);
 
-  // Interior staircase to 2nd Floor
+  // Interior staircase to 2nd Floor (lands at z = -4.6, y = 3.6m)
   stairs(b, WX - 5, 0, WZ - 10, 'z+', 12, 0.30, 0.45, 2.4, 'concreteDark');
 
-  // 2nd Floor Slab
-  br(b, WX, fl1H, WZ, WW + 0.5, 0.4, WD + 0.5, 'concreteDark');
+  // 2nd Floor Slab with built-in stairwell void so players walk freely between floors
+  br(b, -19.5, fl1H, 0, 11.0, 0.4, 28.0, 'concreteDark'); // East section
+  br(b, -29.5, fl1H, -12.5, 9.0, 0.4, 3.0, 'concreteDark'); // West south section
+  br(b, -29.5, fl1H, 5.0, 9.0, 0.4, 18.0, 'concreteDark'); // West north section
+  guard(b, p, 'z', -25.0, -11.0, -4.0, fl2Y, 'metal'); // Stairwell guardrail
+  guard(b, p, 'x', -4.0, -34.0, -25.0, fl2Y, 'metal');
 
   // ── 2nd Floor Exterior Catwalk Terrace & Upper Skybridge ─────────────────
   // Continuous 4.0m-wide elevated walkway running full length from z = -14 to z = 23
   br(b, -12.0, fl1H, 4.5, 4.0, 0.4, 37.0, 'concreteDark');
-  guard(b, p, 'z', -10.0, -14, 23, fl2Y, 'metal');
+  // Catwalk guardrail with clear opening for the Grand Central Staircase landing
+  guard(b, p, 'z', -10.0, -14, -2.6, fl2Y, 'metal');
+  guard(b, p, 'z', -10.0, 2.6, 23, fl2Y, 'metal');
   guard(b, p, 'x', -14.0, -14, -10, fl2Y, 'metal');
 
   // Transition stairs connecting bridge end (z = 23, y = 4.0m) down to Helipad Terrace (y = 3.2m)
@@ -1135,11 +1141,21 @@ function buildDustworks(): GameMap {
   wallWithOpenings(b, 'x', WZ - WD / 2, WX - WW / 2, WX + WW / 2, fl2Y, fl2H, 0.5, 'concrete', undefined, winFront);
   wallWithOpenings(b, 'x', WZ + WD / 2, WX - WW / 2, WX + WW / 2, fl2Y, fl2H, 0.5, 'concrete', undefined, winFront);
 
-  // 2nd Floor Staircase to Roof
+  // 2nd Floor Staircase to Roof (starts at z = 10, goes z- to z = 4.6, lands at y = 7.6m)
   stairs(b, WX + 5, fl2Y, WZ + 10, 'z-', 12, 0.30, 0.45, 2.4, 'concreteDark');
 
-  // Roof Slab
-  br(b, WX, roofY, WZ, WW + 1.0, 0.4, WD + 1.0, 'concreteDark');
+  // Roof Slab with stairwell roof opening
+  br(b, -28.5, roofY, 0, 11.0, 0.4, 28.0, 'concreteDark'); // West roof section
+  br(b, -18.5, roofY, -5.0, 9.0, 0.4, 18.0, 'concreteDark'); // East south roof section
+  br(b, -18.5, roofY, 12.5, 9.0, 0.4, 3.0, 'concreteDark'); // East north roof section
+
+  // Roof stairwell penthouse enclosure with access doorway
+  wall(b, 'z', -23.0, 4.0, 11.0, roofWalkY, 2.6, 0.4, 'concrete');
+  wall(b, 'x', 4.0, -23.0, -14.0, roofWalkY, 2.6, 0.4, 'concrete', { at: -18.5, width: 2.4, height: 2.4 });
+  wall(b, 'x', 11.0, -23.0, -14.0, roofWalkY, 2.6, 0.4, 'concrete');
+  br(b, -18.5, roofWalkY + 2.6, 7.5, 9.0, 0.3, 7.5, 'metalDark');
+
+  // Roof Perimeter parapet walls
   wall(b, 'z', WX + WW / 2 + 0.5, WZ - WD / 2 - 0.5, WZ + WD / 2 + 0.5, roofWalkY, 0.95, 0.5, 'concrete');
   wall(b, 'z', WX - WW / 2 - 0.5, WZ - WD / 2 - 0.5, WZ + WD / 2 + 0.5, roofWalkY, 0.95, 0.5, 'concrete');
   wall(b, 'x', WZ - WD / 2 - 0.5, WX - WW / 2 - 0.5, WX + WW / 2 + 0.5, roofWalkY, 0.95, 0.5, 'concrete');
@@ -1178,9 +1194,10 @@ function buildDustworks(): GameMap {
   br(b, EX, EH + 0.4, EZ - 5, 8.0, 1.2, 4.4, 'metalDark');
   br(b, EX, EH + 0.4, EZ + 5, 8.0, 1.2, 4.4, 'metalDark');
 
-  // Hangar interior mezzanine catwalk
-  br(b, EX + EW / 2 - 2.0, 3.2, EZ, 4.0, 0.4, ED - 2, 'concreteDark');
-  guard(b, p, 'z', EX + EW / 2 - 4.0, EZ - ED / 2 + 2, EZ + ED / 2 - 2, 3.6, 'metal');
+  // Hangar interior mezzanine catwalk with dedicated stairwell opening
+  br(b, EX + EW / 2 - 2.0, 3.2, 4.5, 4.0, 0.4, 15.0, 'concreteDark');
+  guard(b, p, 'z', EX + EW / 2 - 4.0, -3.0, 12.0, 3.6, 'metal');
+  guard(b, p, 'x', 12.0, EX + EW / 2 - 4.0, EX + EW / 2, 3.6, 'metal');
   stairs(b, EX + EW / 2 - 2.0, 0, EZ - 8, 'z+', 11, 0.29, 0.45, 2.0, 'concreteDark');
 
   // Hangar interior crates & barrels
@@ -1276,7 +1293,8 @@ function buildDustworks(): GameMap {
     wall(b, 'x', tz + 2.8, tx - 2.8, tx + 2.8, 3.4, 0.9, 0.4, 'concrete');
     wall(b, 'z', tx - 2.8, tz - 2.8, tz + 2.8, 3.4, 0.9, 0.4, 'concrete');
     wall(b, 'z', tx + 2.8, tz - 2.8, tz + 2.8, 3.4, 0.9, 0.4, 'concrete');
-    ladder(p, tx + (tx > 0 ? -3.05 : 3.05), 0, tz, 3.4, 'x');
+    // Access stairs into watchtowers
+    stairs(b, tx + (tx > 0 ? -4.5 : 4.5), 0, tz, tx > 0 ? 'x+' : 'x-', 11, 3.4 / 11, 0.4, 1.8, 'concreteDark');
     pr(p, 'cyl', tx, 3.4, tz, 0.12, 2.7, 'metalDark', 'y', true);
     pr(p, 'sphere', tx, 6.1, tz, 0.22, 0, 'light');
   }
