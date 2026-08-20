@@ -880,29 +880,29 @@ export class ViewModel {
         // ── Modern Open Reflex / Holographic Sight (Striker / Viper / Breacher) ──
         const sightY = v.bodyH * 0.88;
         const sightZ = -v.bodyLen * 0.42;
-        const frameW = v.bodyW * 0.64;
-        const frameH = 0.046;
-        const postW = 0.007;
+        const frameW = 0.082;
+        const frameH = 0.058;
+        const postW = 0.005;
         this.adsSightY = sightY + frameH * 0.5;
 
         // Sight Picatinny mount base
         add(new THREE.BoxGeometry(frameW, 0.012, 0.08), darkMat, 0, sightY - 0.016, sightZ);
         // Bottom basebar under window
-        add(new THREE.BoxGeometry(frameW, 0.007, 0.065), accentMat, 0, sightY, sightZ);
+        add(new THREE.BoxGeometry(frameW, 0.006, 0.065), accentMat, 0, sightY, sightZ);
         // Left frame pillar
         add(new THREE.BoxGeometry(postW, frameH, 0.065), accentMat, -frameW * 0.5 + postW * 0.5, sightY + frameH * 0.5, sightZ);
         // Right frame pillar
         add(new THREE.BoxGeometry(postW, frameH, 0.065), accentMat, frameW * 0.5 - postW * 0.5, sightY + frameH * 0.5, sightZ);
         // Top protective hood bar
-        add(new THREE.BoxGeometry(frameW, 0.007, 0.065), accentMat, 0, sightY + frameH, sightZ);
+        add(new THREE.BoxGeometry(frameW, 0.006, 0.065), accentMat, 0, sightY + frameH, sightZ);
 
         // Center Optical Window: COMPLETELY OPEN / HOLLOW WITH ANTI-REFLECTIVE TINTED GLASS
-        const glass = add(new THREE.PlaneGeometry(frameW - postW * 2, frameH - 0.007), opticLensMat, 0, sightY + frameH * 0.5, sightZ + 0.01);
+        const glass = add(new THREE.PlaneGeometry(frameW - postW * 2, frameH - 0.006), opticLensMat, 0, sightY + frameH * 0.5, sightZ + 0.01);
         glass.rotation.x = -0.04;
 
         // Floating illuminated bright red holographic center reticle dot and ring!
-        const redDot = add(new THREE.CircleGeometry(0.0022, 12), reticleRedMat, 0, sightY + frameH * 0.5, sightZ + 0.012);
-        const redRing = add(new THREE.RingGeometry(0.006, 0.008, 16), reticleRedMat, 0, sightY + frameH * 0.5, sightZ + 0.012);
+        const redDot = add(new THREE.CircleGeometry(0.0024, 12), reticleRedMat, 0, sightY + frameH * 0.5, sightZ + 0.012);
+        const redRing = add(new THREE.RingGeometry(0.007, 0.009, 16), reticleRedMat, 0, sightY + frameH * 0.5, sightZ + 0.012);
         redDot.renderOrder = 10;
         redRing.renderOrder = 10;
 

@@ -31,21 +31,21 @@
       </div>
       <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
       <div id="scope" class="hidden">
-        <svg class="scope-svg" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
+        <svg class="scope-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
           <defs>
             <mask id="scope-lens-mask">
-              <rect x="-800" y="-300" width="2600" height="1600" fill="white" />
-              <circle cx="500" cy="500" r="475" fill="black" />
+              <rect x="-1000" y="-500" width="3920" height="2080" fill="white" />
+              <circle cx="960" cy="540" r="515" fill="black" />
             </mask>
             <radialGradient id="vignette-grad" cx="50%" cy="50%" r="50%">
-              <stop offset="72%" stop-color="#020406" stop-opacity="0.97" />
-              <stop offset="86%" stop-color="#04070a" stop-opacity="0.99" />
+              <stop offset="68%" stop-color="#020406" stop-opacity="0.97" />
+              <stop offset="84%" stop-color="#04070a" stop-opacity="0.99" />
               <stop offset="100%" stop-color="#010204" stop-opacity="1" />
             </radialGradient>
             <radialGradient id="lens-edge-glow" cx="50%" cy="50%" r="50%">
               <stop offset="94%" stop-color="transparent" />
               <stop offset="98%" stop-color="#00f0b4" stop-opacity="0.30" />
-              <stop offset="100%" stop-color="#00e1ff" stop-opacity="0.50" />
+              <stop offset="100%" stop-color="#00e1ff" stop-opacity="0.55" />
             </radialGradient>
             <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
               <feGaussianBlur stdDeviation="3.0" result="blur" />
@@ -57,99 +57,99 @@
           </defs>
 
           <!-- Outer Scope Body / Dark Peripheral Mask covering entire widescreen -->
-          <rect x="-800" y="-300" width="2600" height="1600" fill="url(#vignette-grad)" mask="url(#scope-lens-mask)" />
+          <rect x="-1000" y="-500" width="3920" height="2080" fill="url(#vignette-grad)" mask="url(#scope-lens-mask)" />
 
           <!-- Scope Bezel Metallic Rings -->
-          <circle cx="500" cy="500" r="478" fill="none" stroke="#12161c" stroke-width="7" />
-          <circle cx="500" cy="500" r="475" fill="none" stroke="#2a3340" stroke-width="2.5" />
-          <circle cx="500" cy="500" r="473" fill="url(#lens-edge-glow)" />
+          <circle cx="960" cy="540" r="518" fill="none" stroke="#12161c" stroke-width="7" />
+          <circle cx="960" cy="540" r="515" fill="none" stroke="#2a3340" stroke-width="2.5" />
+          <circle cx="960" cy="540" r="513" fill="url(#lens-edge-glow)" />
 
           <!-- Scope Reticle - Mil-Spec Precision Etched Glass -->
           <g stroke="#080c12" stroke-linecap="square">
             <!-- Heavy Outer Posts -->
-            <line x1="500" y1="28" x2="500" y2="280" stroke-width="4.5" />
-            <line x1="500" y1="720" x2="500" y2="972" stroke-width="4.5" />
-            <line x1="28" y1="500" x2="280" y2="500" stroke-width="4.5" />
-            <line x1="720" y1="500" x2="972" y2="500" stroke-width="4.5" />
+            <line x1="960" y1="28" x2="960" y2="300" stroke-width="4.5" />
+            <line x1="960" y1="780" x2="960" y2="1052" stroke-width="4.5" />
+            <line x1="448" y1="540" x2="720" y2="540" stroke-width="4.5" />
+            <line x1="1200" y1="540" x2="1472" y2="540" stroke-width="4.5" />
 
             <!-- Fine Main Crosshairs -->
-            <line x1="500" y1="280" x2="500" y2="720" stroke-width="1.4" />
-            <line x1="280" y1="500" x2="720" y2="500" stroke-width="1.4" />
+            <line x1="960" y1="300" x2="960" y2="780" stroke-width="1.4" />
+            <line x1="720" y1="540" x2="1200" y2="540" stroke-width="1.4" />
 
             <!-- Horizontal Mil Hash Marks (Left & Right) -->
-            <line x1="472" y1="495" x2="472" y2="505" stroke-width="1.2" />
-            <line x1="444" y1="492" x2="444" y2="508" stroke-width="1.5" />
-            <line x1="416" y1="495" x2="416" y2="505" stroke-width="1.2" />
-            <line x1="388" y1="490" x2="388" y2="510" stroke-width="1.8" />
-            <line x1="360" y1="495" x2="360" y2="505" stroke-width="1.2" />
-            <line x1="332" y1="488" x2="332" y2="512" stroke-width="2.0" />
+            <line x1="932" y1="535" x2="932" y2="545" stroke-width="1.2" />
+            <line x1="904" y1="532" x2="904" y2="548" stroke-width="1.5" />
+            <line x1="876" y1="535" x2="876" y2="545" stroke-width="1.2" />
+            <line x1="848" y1="530" x2="848" y2="550" stroke-width="1.8" />
+            <line x1="820" y1="535" x2="820" y2="545" stroke-width="1.2" />
+            <line x1="792" y1="528" x2="792" y2="552" stroke-width="2.0" />
 
-            <line x1="528" y1="495" x2="528" y2="505" stroke-width="1.2" />
-            <line x1="556" y1="492" x2="556" y2="508" stroke-width="1.5" />
-            <line x1="584" y1="495" x2="584" y2="505" stroke-width="1.2" />
-            <line x1="612" y1="490" x2="612" y2="510" stroke-width="1.8" />
-            <line x1="640" y1="495" x2="640" y2="505" stroke-width="1.2" />
-            <line x1="668" y1="488" x2="668" y2="512" stroke-width="2.0" />
+            <line x1="988" y1="535" x2="988" y2="545" stroke-width="1.2" />
+            <line x1="1016" y1="532" x2="1016" y2="548" stroke-width="1.5" />
+            <line x1="1044" y1="535" x2="1044" y2="545" stroke-width="1.2" />
+            <line x1="1072" y1="530" x2="1072" y2="550" stroke-width="1.8" />
+            <line x1="1100" y1="535" x2="1100" y2="545" stroke-width="1.2" />
+            <line x1="1128" y1="528" x2="1128" y2="552" stroke-width="2.0" />
 
             <!-- Vertical Mil Hash Marks (Elevation) -->
-            <line x1="495" y1="472" x2="505" y2="472" stroke-width="1.2" />
-            <line x1="492" y1="444" x2="508" y2="444" stroke-width="1.5" />
-            <line x1="495" y1="416" x2="505" y2="416" stroke-width="1.2" />
-            <line x1="490" y1="388" x2="510" y2="388" stroke-width="1.8" />
+            <line x1="955" y1="512" x2="965" y2="512" stroke-width="1.2" />
+            <line x1="952" y1="484" x2="968" y2="484" stroke-width="1.5" />
+            <line x1="955" y1="456" x2="965" y2="456" stroke-width="1.2" />
+            <line x1="950" y1="428" x2="970" y2="428" stroke-width="1.8" />
 
             <!-- Downward Bullet-Drop Christmas Tree Grid (Holdover) -->
-            <line x1="495" y1="528" x2="505" y2="528" stroke-width="1.2" />
-            <line x1="492" y1="556" x2="508" y2="556" stroke-width="1.5" />
-            <line x1="495" y1="584" x2="505" y2="584" stroke-width="1.2" />
-            <line x1="488" y1="612" x2="512" y2="612" stroke-width="1.8" />
-            <line x1="495" y1="640" x2="505" y2="640" stroke-width="1.2" />
-            <line x1="484" y1="668" x2="516" y2="668" stroke-width="2.0" />
+            <line x1="955" y1="568" x2="965" y2="568" stroke-width="1.2" />
+            <line x1="952" y1="596" x2="968" y2="596" stroke-width="1.5" />
+            <line x1="955" y1="624" x2="965" y2="624" stroke-width="1.2" />
+            <line x1="948" y1="652" x2="972" y2="652" stroke-width="1.8" />
+            <line x1="955" y1="680" x2="965" y2="680" stroke-width="1.2" />
+            <line x1="944" y1="708" x2="976" y2="708" stroke-width="2.0" />
 
             <!-- Windage Hold Dots in Tree Pattern -->
-            <circle cx="472" cy="556" r="1.6" fill="#080c12" />
-            <circle cx="528" cy="556" r="1.6" fill="#080c12" />
-            <circle cx="460" cy="612" r="1.6" fill="#080c12" />
-            <circle cx="540" cy="612" r="1.6" fill="#080c12" />
-            <circle cx="444" cy="668" r="1.6" fill="#080c12" />
-            <circle cx="556" cy="668" r="1.6" fill="#080c12" />
+            <circle cx="932" cy="596" r="1.6" fill="#080c12" />
+            <circle cx="988" cy="596" r="1.6" fill="#080c12" />
+            <circle cx="920" cy="652" r="1.6" fill="#080c12" />
+            <circle cx="1000" cy="652" r="1.6" fill="#080c12" />
+            <circle cx="904" cy="708" r="1.6" fill="#080c12" />
+            <circle cx="1016" cy="708" r="1.6" fill="#080c12" />
           </g>
 
           <!-- Numbers on Reticle -->
           <g fill="#080c12" font-family="'Encode Sans Semi Condensed', sans-serif" font-size="11" font-weight="700" text-anchor="middle">
-            <text x="388" y="524">4</text>
-            <text x="332" y="526">8</text>
-            <text x="612" y="524">4</text>
-            <text x="668" y="526">8</text>
-            <text x="520" y="560">2</text>
-            <text x="524" y="616">4</text>
-            <text x="528" y="672">6</text>
+            <text x="848" y="564">4</text>
+            <text x="792" y="566">8</text>
+            <text x="1072" y="564">4</text>
+            <text x="1128" y="566">8</text>
+            <text x="980" y="600">2</text>
+            <text x="984" y="656">4</text>
+            <text x="988" y="712">6</text>
           </g>
 
           <!-- Stadiametric Rangefinder Curve on Bottom-Left -->
           <g stroke="#080c12" stroke-width="1.2" fill="none">
-            <path d="M 260 690 Q 320 680 370 650" />
-            <line x1="260" y1="690" x2="370" y2="690" stroke-width="1.5" />
-            <line x1="280" y1="687" x2="280" y2="690" />
-            <line x1="310" y1="682" x2="310" y2="690" />
-            <line x1="340" y1="672" x2="340" y2="690" />
-            <text x="260" y="704" fill="#080c12" font-size="9" font-family="'Encode Sans Semi Condensed', sans-serif" font-weight="700">1.7m</text>
-            <text x="280" y="704" fill="#080c12" font-size="8" font-family="'Encode Sans Semi Condensed', sans-serif">8</text>
-            <text x="310" y="704" fill="#080c12" font-size="8" font-family="'Encode Sans Semi Condensed', sans-serif">6</text>
-            <text x="340" y="704" fill="#080c12" font-size="8" font-family="'Encode Sans Semi Condensed', sans-serif">4</text>
-            <text x="370" y="704" fill="#080c12" font-size="8" font-family="'Encode Sans Semi Condensed', sans-serif">2</text>
+            <path d="M 720 730 Q 780 720 830 690" />
+            <line x1="720" y1="730" x2="830" y2="730" stroke-width="1.5" />
+            <line x1="740" y1="727" x2="740" y2="730" />
+            <line x1="770" y1="722" x2="770" y2="730" />
+            <line x1="800" y1="712" x2="800" y2="730" />
+            <text x="720" y="744" fill="#080c12" font-size="9" font-family="'Encode Sans Semi Condensed', sans-serif" font-weight="700">1.7m</text>
+            <text x="740" y="744" fill="#080c12" font-size="8" font-family="'Encode Sans Semi Condensed', sans-serif">8</text>
+            <text x="770" y="744" fill="#080c12" font-size="8" font-family="'Encode Sans Semi Condensed', sans-serif">6</text>
+            <text x="800" y="744" fill="#080c12" font-size="8" font-family="'Encode Sans Semi Condensed', sans-serif">4</text>
+            <text x="830" y="744" fill="#080c12" font-size="8" font-family="'Encode Sans Semi Condensed', sans-serif">2</text>
           </g>
 
           <!-- Central Illuminated Glowing Red Dot & Ring -->
-          <circle cx="500" cy="500" r="3.2" fill="#ff2212" filter="url(#glow)" />
-          <circle cx="500" cy="500" r="1.4" fill="#ffffff" />
-          <circle cx="500" cy="500" r="8.5" fill="none" stroke="#ff2212" stroke-width="0.8" opacity="0.45" />
+          <circle cx="960" cy="540" r="3.2" fill="#ff2212" filter="url(#glow)" />
+          <circle cx="960" cy="540" r="1.4" fill="#ffffff" />
+          <circle cx="960" cy="540" r="9.0" fill="none" stroke="#ff2212" stroke-width="0.9" opacity="0.45" />
 
           <!-- Modern Tactical HUD Telemetry in Corners -->
           <g fill="#00f0b4" font-family="'Encode Sans Semi Condensed', monospace" font-size="11" font-weight="700" letter-spacing="1">
-            <text x="40" y="45">MAG: 8.0× | FOV: 6.2°</text>
-            <text x="960" y="45" text-anchor="end">RANGE: LASER READY</text>
-            <text x="40" y="975">CALIBER: .338 MAGNUM</text>
-            <text x="960" y="975" text-anchor="end">ELEV: 0.0 MIL | WIND: 0.0</text>
+            <text x="80" y="70">MAG: 8.0× | FOV: 6.2°</text>
+            <text x="1840" y="70" text-anchor="end">RANGE: LASER READY</text>
+            <text x="80" y="1030">CALIBER: .338 MAGNUM</text>
+            <text x="1840" y="1030" text-anchor="end">ELEV: 0.0 MIL | WIND: 0.0</text>
           </g>
         </svg>
       </div>
