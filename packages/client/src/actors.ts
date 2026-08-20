@@ -132,13 +132,13 @@ export function labelTexture(text: string, color: string): THREE.Texture {
  * without ever being able to point at it.
  */
 export const JOINT = {
-  torsoY: 0.86,
-  hipsY: 0.76,
-  shoulderY: 1.4,
-  legHipY: 0.78,
+  torsoY: 0.88,
+  hipsY: 0.74,
+  shoulderY: 1.34,
+  legHipY: 0.74,
   /** Half the separation: arms and legs are mirrored about the spine. */
-  armX: 0.28,
-  legX: 0.11,
+  armX: 0.23,
+  legX: 0.12,
 } as const;
 
 /** Every limb of a built character, by name, plus what it takes to free it. */
@@ -395,13 +395,13 @@ export function poseWeapon(rig: CharacterRig, weaponId: number, pitch: number, k
   const w = weaponById(weaponId);
   const gunLen = Math.max(0.18, w.viz.bodyLen + w.viz.barrelLen);
   rig.gun.scale.set(1, 1, gunLen / 0.44);
-  const reach = 0.34 + gunLen * 0.35;
+  const reach = 0.32 + gunLen * 0.32;
   rig.gun.position.set(
-    -JOINT.armX,
-    JOINT.shoulderY * k - 0.22 + Math.sin(pitch) * reach,
+    -0.12,
+    JOINT.shoulderY * k - 0.16 + Math.sin(pitch) * reach,
     -Math.cos(pitch) * reach,
   );
-  rig.gun.rotation.set(pitch, 0, 0);
+  rig.gun.rotation.set(pitch, -0.04, 0);
   rig.gun.visible = w.fireMode !== 'melee';
 }
 
@@ -710,32 +710,38 @@ class Actor {
     const shoulderY = JOINT.shoulderY * k;
     const hipY = JOINT.legHipY * k;
 
-    this.legL.position.set(-JOINT.legX, hipY, 0);
-    this.legR.position.set(JOINT.legX, hipY, 0);
+    this.legL.position.set(JOINT.legX, hipY, 0);
+    this.legR.position.set(-JOINT.legX, hipY, 0);
     this.legL.rotation.x = swing * amp;
     this.legR.rotation.x = -swing * amp;
     this.legL.scale.set(1, k, 1);
     this.legR.scale.set(1, k, 1);
 
-    // The weapon arm stays forward and level; only the free arm swings.
-    //
-    // Signs matter and were wrong here for a long time. The arms hang along -Y and
-    // the character faces -Z, so a *positive* `rotation.x` is what swings a hand
-    // forward (verified against Three.js rather than reasoned about: at +1.15 rad
-    // the glove lands at z = -0.45, in front; at -1.15 it lands at z = +0.45,
-    // behind the player's own back). Every arm angle below therefore reads as
-    // "how far forward", and a bigger number is a hand held higher.
     const ads = (flags & AF.ADS) !== 0;
+    const isMoving = onGround && speed > 0.4;
+
+    // Right arm holds pistol grip & trigger firmly
     this.armR.position.set(-JOINT.armX, shoulderY, 0);
-    this.armR.rotation.x = 1.15 + (ads ? 0.28 : 0) + Math.max(-0.8, Math.min(0.8, pitch)) * 0.5;
+    this.armR.rotation.set(
+      1.22 + (ads ? 0.22 : 0) + Math.max(-0.8, Math.min(0.8, pitch)) * 0.5,
+      -0.22,
+      -0.12,
+    );
+
+    // Left arm reaches across chest supporting the forend (authentic two-handed weapon grip)
     this.armL.position.set(JOINT.armX, shoulderY, 0);
-    // The free arm swings through the gait, so this one legitimately goes negative:
-    // half a stride is an arm travelling behind the hip.
-    this.armL.rotation.x = ads ? 1.0 : 0.35 + swing * amp * 0.85;
+    if (ads) {
+      this.armL.rotation.set(1.36 + Math.max(-0.8, Math.min(0.8, pitch)) * 0.5, 0.44, 0.34);
+    } else if (isMoving) {
+      this.armL.rotation.set(1.20 + Math.sin(this.stepPhase) * 0.08, 0.38, 0.28);
+    } else {
+      this.armL.rotation.set(1.24 + Math.sin(nowLocal * 0.0016) * 0.02, 0.40, 0.30);
+    }
+
     this.armL.scale.set(1, k, 1);
     this.armR.scale.set(1, k, 1);
 
-    // Gun rides in front of the right hand, aligned with the view direction.
+    // Gun rides firmly in both hands
     poseWeapon(this.rig, this.weapon, pitch, k);
 
     this.label.position.set(0, height + 0.22, 0);
