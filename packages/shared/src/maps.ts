@@ -1139,6 +1139,15 @@ function buildDustworks(): GameMap {
   pr(p, 'cyl', WX + 6, roofWalkY, WZ - 8, 0.14, 7.0, 'metalDark', 'y', true);
   pr(p, 'sphere', WX + 6, roofWalkY + 7.0, WZ - 8, 0.18, 0, 'light');
 
+  // ── West Operations North Connecting Annex (Closing Gap to Terrace) ────────
+  wall(b, 'z', -28, 14, 23, 0, fl1H, 0.5, 'concrete');
+  wall(b, 'z', -18, 14, 23, 0, fl1H, 0.5, 'concrete');
+  br(b, -23, fl1H, 18.5, 10.0, 0.4, 9.0, 'concreteDark');
+  wall(b, 'z', -28, 14, 23, fl2Y, fl2H, 0.5, 'concrete');
+  wall(b, 'z', -18, 14, 23, fl2Y, fl2H, 0.5, 'concrete');
+  br(b, -23, roofY, 18.5, 10.5, 0.4, 9.5, 'concreteDark');
+  guard(b, p, 'z', -17.5, 14, 23, roofWalkY, 'metal');
+
   // ── 2. East Wing: Industrial Logistics Hangar (Right Complex) ─────────────
   const EX = 24;
   const EZ = 0;
@@ -1170,6 +1179,14 @@ function buildDustworks(): GameMap {
   barrel(p, EX + 2, 0, EZ - 5, 'rust');
   lamp(p, EX, EH - 0.1, EZ, 0.45);
 
+  // ── East Hangar North Covered Breezeway (Closing Gap to Terrace) ───────────
+  br(b, 24, 0, 18, 12.0, 0.2, 10.0, 'concrete');
+  roundColumn(p, 18.5, 0, 18, 0.35, 4.0, 'metalDark', 'metalDark');
+  roundColumn(p, 29.5, 0, 18, 0.35, 4.0, 'metalDark', 'metalDark');
+  br(b, 24, 4.0, 18, 12.5, 0.35, 10.5, 'metalDark');
+  guard(b, p, 'z', 18, 13, 23, 4.35, 'metal');
+  guard(b, p, 'z', 30, 13, 23, 4.35, 'metal');
+
   // ── 3. Blue Shipping Containers Depot ─────────────────────────────────────
   shippingContainer(b, p, 11, 0, -10, 'z', 'accent');
   shippingContainer(b, p, 11, 0, -3.6, 'z', 'accent');
@@ -1179,7 +1196,16 @@ function buildDustworks(): GameMap {
   shippingContainer(b, p, 15, 0, 3.6, 'x', 'accent');
   shippingContainer(b, p, 6, 0, 12, 'x', 'metalDark');
 
-  // ── 4. Central Staging Courtyard ──────────────────────────────────────────
+  // ── 4. Central Staging Courtyard, Roads & Sidewalks ───────────────────────
+  // Paved central vehicle lane & markings
+  br(b, 0, -1, -5, 12.0, 1.0, 46.0, 'concreteDark');
+
+  // Raised pedestrian sidewalks & curbs
+  br(b, -10.5, 0, 0, 3.0, 0.18, 28.0, 'concrete');
+  br(b, 10.5, 0, 0, 3.0, 0.18, 26.0, 'concrete');
+  br(b, 0, 0, 21.0, 36.0, 0.18, 4.0, 'concrete');
+  br(b, 0, 0, -28.0, 24.0, 0.18, 4.0, 'concrete');
+
   militaryTruck(b, p, -1.0, 0, -12.0, 'z');
 
   br(b, 0, 0, 0, 2.6, 1.2, 2.6, 'wood');
@@ -1202,8 +1228,18 @@ function buildDustworks(): GameMap {
   stairs(b, -16, 0, HZ - HD / 2, 'z-', 11, HY / 11, 0.45, 4.0, 'concreteDark');
   stairs(b, 16, 0, HZ - HD / 2, 'z-', 11, HY / 11, 0.45, 4.0, 'concreteDark');
 
-  // Helipad ring marking
-  ringAt(p, 0, HY, HZ, 6.5, 0.25, 'accent', 'y');
+  // Helipad tarmac & painted "H" markings
+  br(b, 0, HY, HZ, 16.0, 0.02, 16.0, 'concreteDark');
+  wall(b, 'x', HZ - 7.5, -7.5, 7.5, HY + 0.02, 0.01, 0.4, 'accent');
+  wall(b, 'x', HZ + 7.5, -7.5, 7.5, HY + 0.02, 0.01, 0.4, 'accent');
+  wall(b, 'z', -7.5, HZ - 7.5, HZ + 7.5, HY + 0.02, 0.01, 0.4, 'accent');
+  wall(b, 'z', 7.5, HZ - 7.5, HZ + 7.5, HY + 0.02, 0.01, 0.4, 'accent');
+
+  // Bold "H"
+  br(b, -2.2, HY + 0.02, HZ, 0.6, 0.01, 4.6, 'paint');
+  br(b, 2.2, HY + 0.02, HZ, 0.6, 0.01, 4.6, 'paint');
+  br(b, 0, HY + 0.02, HZ, 4.4, 0.01, 0.6, 'paint');
+  ringAt(p, 0, HY + 0.02, HZ, 6.2, 0.2, 'paint', 'y');
 
   // Electrical Generator Substation
   vessel(p, -14, HY, HZ + 4, 1.1, 4.2, 'metal');
@@ -1227,6 +1263,18 @@ function buildDustworks(): GameMap {
   lampPost(p, GX - 6, 0, GZ, 4.8, 1);
   lampPost(p, GX + 6, 0, GZ, 4.8, -1);
 
+  // ── 7. Perimeter Watchtower Pillboxes (4 Corners) ─────────────────────────
+  for (const [tx, tz] of [[-38, -38], [38, -38], [-38, 38], [38, 38]] as const) {
+    br(b, tx, 0, tz, 6.0, 3.4, 6.0, 'concreteDark');
+    wall(b, 'x', tz - 2.8, tx - 2.8, tx + 2.8, 3.4, 0.9, 0.4, 'concrete');
+    wall(b, 'x', tz + 2.8, tx - 2.8, tx + 2.8, 3.4, 0.9, 0.4, 'concrete');
+    wall(b, 'z', tx - 2.8, tz - 2.8, tz + 2.8, 3.4, 0.9, 0.4, 'concrete');
+    wall(b, 'z', tx + 2.8, tz - 2.8, tz + 2.8, 3.4, 0.9, 0.4, 'concrete');
+    ladder(p, tx + (tx > 0 ? -3.05 : 3.05), 0, tz, 3.4, 'x');
+    pr(p, 'cyl', tx, 3.4, tz, 0.12, 2.7, 'metalDark', 'y', true);
+    pr(p, 'sphere', tx, 6.1, tz, 0.22, 0, 'light');
+  }
+
   // ── Spawns ────────────────────────────────────────────────────────────────
   const spawns: Spawn[] = [
     { x: -24, y: 0.05, z: -8, yaw: faceCentre(-24, -8) },
@@ -1240,7 +1288,7 @@ function buildDustworks(): GameMap {
     { x: 0, y: 3.25, z: 33, yaw: faceCentre(0, 33) },
     { x: -16, y: 3.25, z: 33, yaw: faceCentre(-16, 33) },
     { x: 16, y: 3.25, z: 33, yaw: faceCentre(16, 33) },
-    { x: 0, y: 0.05, z: -26, yaw: faceCentre(0, -26) },
+    { x: 0, y: 0.05, z: -22, yaw: faceCentre(0, -22) },
   ];
 
   return {

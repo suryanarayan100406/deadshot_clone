@@ -474,6 +474,62 @@ export class World {
     this.scene.add(disc);
     this.geometries.push(discGeo);
     this.materials.push(discMat);
+
+    // ── Coastal Ocean Plane ──────────────────────────────────────────────────
+    const oceanGeo = new THREE.PlaneGeometry(1600, 1600, 8, 8);
+    oceanGeo.rotateX(-Math.PI / 2);
+    const oceanMat = new THREE.MeshPhongMaterial({
+      color: 0x1a4660,
+      specular: 0x6bb8dc,
+      shininess: 75,
+      fog: true,
+    });
+    const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+    ocean.position.set(0, -42, 0);
+    ocean.frustumCulled = false;
+    ocean.receiveShadow = false;
+    this.scene.add(ocean);
+    this.geometries.push(oceanGeo);
+    this.materials.push(oceanMat);
+
+    // ── Distant Coastal Mountains & Island Ridges ────────────────────────────
+    const mtnGeo = new THREE.ConeGeometry(55, 65, 5);
+    const mtnMat = new THREE.MeshLambertMaterial({
+      color: new THREE.Color(map.fog).lerp(new THREE.Color(0x354854), 0.45),
+      fog: true,
+    });
+    for (const [mx, mz, scale, rot] of [
+      [220, 180, 1.3, 0.4],
+      [280, 70, 1.1, 1.2],
+      [-240, 160, 1.4, 0.8],
+      [-290, -40, 1.2, 2.1],
+      [140, 290, 1.5, 0.2],
+      [-120, 270, 1.6, 1.7],
+      [-260, -200, 1.3, 0.5],
+      [230, -220, 1.2, 1.9],
+    ] as const) {
+      const mtn = new THREE.Mesh(mtnGeo, mtnMat);
+      mtn.position.set(mx, -42 + 32 * scale, mz);
+      mtn.scale.set(scale, scale, scale);
+      mtn.rotation.y = rot;
+      mtn.frustumCulled = false;
+      this.scene.add(mtn);
+    }
+    this.geometries.push(mtnGeo);
+    this.materials.push(mtnMat);
+
+    // ── Coastal Outpost Cliff Embankment (under the compound) ────────────────
+    const cliffGeo = new THREE.CylinderGeometry(map.half + 6, map.half + 45, 42, 16);
+    const cliffMat = new THREE.MeshLambertMaterial({
+      color: 0x5a5246,
+      fog: true,
+    });
+    const cliff = new THREE.Mesh(cliffGeo, cliffMat);
+    cliff.position.set(0, -21, 0);
+    cliff.frustumCulled = false;
+    this.scene.add(cliff);
+    this.geometries.push(cliffGeo);
+    this.materials.push(cliffMat);
   }
 
   clear(): void {
