@@ -38,11 +38,11 @@ export const MAX_HEALTH = 100;
 
 // ── Movement ─────────────────────────────────────────────────────────────────
 export const GRAVITY = 22.0;
-export const JUMP_SPEED = 7.4;
+export const JUMP_SPEED = 6.2;
 
-export const SPEED_WALK = 4.8;
-export const SPEED_SPRINT = 7.6;
-export const SPEED_CROUCH = 2.4;
+export const SPEED_WALK = 3.6;
+export const SPEED_SPRINT = 5.6;
+export const SPEED_CROUCH = 1.8;
 
 export const STAMINA_MAX = 1.0;
 export const STAMINA_DRAIN_RATE = 1.0 / 4.5;
@@ -69,7 +69,7 @@ export const STAMINA_COOLDOWN = 1.8;
  * the table is actually reached, so this cannot silently regress again.
  */
 export const ACCEL_GROUND = 150.0;
-export const ACCEL_AIR = 26.0;
+export const ACCEL_AIR = 18.0;
 export const FRICTION_GROUND = 11.0;
 /** Below this speed friction stops scaling and just kills the remainder. */
 export const FRICTION_STOP_SPEED = 1.6;
