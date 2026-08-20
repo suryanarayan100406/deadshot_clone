@@ -80,6 +80,7 @@ import {
   makeHitbox,
   mapById,
   mapColliders,
+  raycastWorld,
   traceShot,
   v3,
   weaponById,
@@ -1381,9 +1382,11 @@ class Game {
 
   private playFrame(dt: number, nowLocal: number): void {
     // 1 — look, at full frame rate.
+    const eye0 = this.predictor.eyePosition(this.eye);
     const yaw0 = this.input.yaw;
     const pitch0 = this.input.pitch;
     this.input.applyLook(this.viewModel.adsFactor);
+    this.applyAimAssist(dt, eye0);
     const lookDx = this.input.yaw - yaw0;
     const lookDy = this.input.pitch - pitch0;
 
@@ -1522,6 +1525,94 @@ class Game {
       w.range,
     );
     this.onTarget = hit.hitId >= 0;
+  }
+
+  /**
+   * Smooth target magnetism / auto-aim assistance.
+   *
+   * Finds the best visible enemy target near the crosshair, checks line of sight
+   * against world colliders, and smoothly pulls the camera look angles towards
+   * the enemy upper chest / head. Scoped / ADS weapons receive crisp snap & tracking.
+   */
+  private applyAimAssist(dt: number, eye: Vec3): void {
+    if (!this.alive || !this.settings.get('aimAssist')) return;
+    const strength = this.settings.get('aimAssistStrength') ?? 1.0;
+    if (strength <= 0.01) return;
+
+    const w = this.viewModel.currentWeapon;
+    const ads = this.viewModel.adsFactor;
+    const isScoped = w.scoped && ads > 0.4;
+
+    const yaw = this.input.yaw;
+    const pitch = this.input.pitch;
+    const fwd = dirFromAngles(this.aim, yaw, pitch);
+
+    let bestDYaw = 0;
+    let bestDPitch = 0;
+    let bestAngDist = 0;
+    let hasTarget = false;
+    let bestScore = Infinity;
+
+    // Angle cone: wider at hip for friction, tight and focused in ADS / scope
+    const maxAngleRad = (isScoped ? 20 : ads > 0 ? 25 : 18) * (Math.PI / 180);
+    const minDot = Math.cos(maxAngleRad);
+
+    this.actors.forEach((a) => {
+      if (a.dead || (a.flags & AF.DEAD) !== 0) return;
+      if (this.teamMode && this.myTeam !== TEAM_NONE && a.team === this.myTeam) return;
+
+      const crouch = (a.flags & AF.CROUCH) !== 0;
+      const targetH = crouch ? PLAYER_CROUCH_HEIGHT * 0.8 : PLAYER_HEIGHT * 0.82;
+      const tx = a.x;
+      const ty = a.y + targetH;
+      const tz = a.z;
+
+      const dx = tx - eye.x;
+      const dy = ty - eye.y;
+      const dz = tz - eye.z;
+      const dist = Math.hypot(dx, dy, dz);
+      if (dist < 0.6 || dist > w.range) return;
+
+      const ndx = dx / dist;
+      const ndy = dy / dist;
+      const ndz = dz / dist;
+
+      const dot = fwd.x * ndx + fwd.y * ndy + fwd.z * ndz;
+      if (dot < minDot) return;
+
+      // Line-of-sight test against map geometry
+      const hit = raycastWorld(eye.x, eye.y, eye.z, ndx, ndy, ndz, this.colliders, dist);
+      if (hit && hit.t < dist - 0.3) return;
+
+      // Desired angles to look directly at target
+      const targetYaw = Math.atan2(-dx, -dz);
+      const horizDist = Math.hypot(dx, dz);
+      const targetPitch = Math.atan2(dy, horizDist);
+
+      const dYaw = wrapAngle(targetYaw - yaw);
+      const dPitch = clamp(targetPitch - pitch, -PITCH_LIMIT, PITCH_LIMIT);
+      const angDist = Math.hypot(dYaw, dPitch);
+
+      // Score prioritizing targets closer to crosshair
+      const score = angDist * (1 + dist / 60);
+      if (score < bestScore) {
+        bestScore = score;
+        bestDYaw = dYaw;
+        bestDPitch = dPitch;
+        bestAngDist = angDist;
+        hasTarget = true;
+      }
+    });
+
+    if (hasTarget) {
+      // Smooth magnetic pull with proximity boost
+      const proximity = Math.max(0, 1.0 - bestAngDist / maxAngleRad);
+      const baseRate = isScoped ? 22.0 : ads > 0.2 ? 16.0 : 8.5;
+      const pull = Math.min(0.85, dt * baseRate * strength * Math.pow(proximity, 1.15));
+
+      this.input.yaw = wrapAngle(this.input.yaw + bestDYaw * pull);
+      this.input.pitch = clamp(this.input.pitch + bestDPitch * pull, -PITCH_LIMIT, PITCH_LIMIT);
+    }
   }
 
   /**

@@ -482,29 +482,69 @@ export class ViewModel {
       Math.min(cycleTime(w) * 0.85, this.actionKind === 'slide' ? 0.075 : 0.34),
     );
 
+    // Realistic tactical materials with authentic specular response
     const bodyMat = new THREE.MeshPhongMaterial({
       color: v.color,
-      specular: 0x2a2e34,
-      shininess: 22,
+      specular: 0x4e5560,
+      shininess: 45,
     });
     const accentMat = new THREE.MeshPhongMaterial({
       color: v.accent,
-      specular: 0x6a7078,
-      shininess: 58,
+      specular: 0x788290,
+      shininess: 65,
     });
     const darkMat = new THREE.MeshPhongMaterial({
-      color: 0x14161a,
-      specular: 0x50555c,
-      shininess: 64,
+      color: 0x121418,
+      specular: 0x555e6c,
+      shininess: 85,
     });
-    // Polymer: matte on purpose, so grips and magazines read as a different
-    // material from the metal next to them.
     const gripMat = new THREE.MeshPhongMaterial({
-      color: 0x1a1d21,
+      color: 0x181a1d,
       specular: 0x101214,
-      shininess: 6,
+      shininess: 12,
     });
-    this.materials.push(bodyMat, accentMat, darkMat, gripMat);
+    const brassMat = new THREE.MeshPhongMaterial({
+      color: 0xd4a43b,
+      specular: 0xfff0b0,
+      shininess: 110,
+    });
+    const chromeMat = new THREE.MeshPhongMaterial({
+      color: 0x98a0aa,
+      specular: 0xf0f4f8,
+      shininess: 120,
+    });
+    const opticLensMat = new THREE.MeshPhongMaterial({
+      color: 0x18302c,
+      specular: 0x80ffd0,
+      shininess: 140,
+      transparent: true,
+      opacity: 0.85,
+    });
+    const reticleRedMat = new THREE.MeshBasicMaterial({ color: 0xff2515 });
+    const reticleGreenMat = new THREE.MeshBasicMaterial({ color: 0x15ff55 });
+    const gloveMat = new THREE.MeshPhongMaterial({
+      color: 0x242830,
+      specular: 0x20242a,
+      shininess: 16,
+    });
+    const gloveArmor = new THREE.MeshPhongMaterial({
+      color: 0x111316,
+      specular: 0x4a5260,
+      shininess: 60,
+    });
+    this.materials.push(
+      bodyMat,
+      accentMat,
+      darkMat,
+      gripMat,
+      brassMat,
+      chromeMat,
+      opticLensMat,
+      reticleRedMat,
+      reticleGreenMat,
+      gloveMat,
+      gloveArmor,
+    );
 
     const add = (
       geo: THREE.BufferGeometry,
@@ -526,333 +566,357 @@ export class ViewModel {
     };
 
     if (w.fireMode === 'melee') {
-      // A knife. The blade is a four-sided cone flattened on one axis, which
-      // gives a real taper to a point — a box would read as a stick, and the
-      // point is the whole silhouette of a knife.
+      // ── Tactical Combat Knife ──────────────────────────────────────────────
       const bladeLen = v.barrelLen;
-      add(new THREE.BoxGeometry(0.03, 0.034, 0.105), gripMat, 0, 0, 0.022);
-      // Grip wrap, so the handle is not one featureless block.
+      // Ergonomic G10 handle with finger choil
+      add(new THREE.BoxGeometry(0.028, 0.036, 0.11), gripMat, 0, 0, 0.02);
+      // Contoured handle scales and torx screws
       for (let i = 0; i < 3; i++) {
-        add(new THREE.BoxGeometry(0.033, 0.006, 0.012), darkMat, 0, 0, -0.008 + i * 0.026);
+        add(new THREE.BoxGeometry(0.03, 0.008, 0.016), darkMat, 0, 0, -0.01 + i * 0.028);
+        add(new THREE.CylinderGeometry(0.003, 0.003, 0.031, 6), chromeMat, 0, 0, -0.01 + i * 0.028, 0, 0, Math.PI / 2);
       }
-      add(new THREE.BoxGeometry(0.062, 0.013, 0.015), accentMat, 0, 0, -0.036);
+      // Tactical crossguard with thumb jimping
+      add(new THREE.BoxGeometry(0.066, 0.015, 0.018), darkMat, 0, 0.002, -0.04);
+      add(new THREE.BoxGeometry(0.026, 0.006, 0.01), chromeMat, 0, 0.011, -0.04);
 
-      const bladeGeo = new THREE.CylinderGeometry(0.0015, 0.021, bladeLen, 4, 1);
-      // Flatten across X into a blade, then lay it along −Z.
-      bladeGeo.scale(0.42, 1, 1);
-      const blade = add(bladeGeo, accentMat, 0, 0.006, -0.043 - bladeLen * 0.5, Math.PI / 2, 0, 0);
+      // Two-tone combat Tanto / Bowie blade
+      const bladeGeo = new THREE.CylinderGeometry(0.0012, 0.022, bladeLen, 4, 1);
+      bladeGeo.scale(0.38, 1, 1);
+      const blade = add(bladeGeo, chromeMat, 0, 0.006, -0.045 - bladeLen * 0.5, Math.PI / 2, 0, 0);
       blade.rotation.z = 0.02;
-      // A darker fuller down the centre catches the light differently from the
-      // ground edge, which is what makes it look sharpened.
-      add(
-        new THREE.BoxGeometry(0.004, 0.012, bladeLen * 0.72),
-        darkMat,
-        0,
-        0.008,
-        -0.05 - bladeLen * 0.44,
-      );
+
+      // Dark spine & blood fuller groove
+      add(new THREE.BoxGeometry(0.006, 0.013, bladeLen * 0.78), darkMat, 0, 0.01, -0.052 - bladeLen * 0.44);
+      add(new THREE.BoxGeometry(0.008, 0.004, bladeLen * 0.52), chromeMat, 0, 0.007, -0.05 - bladeLen * 0.38);
+
+      // Lanyard pommel loop at base of handle
+      add(new THREE.CylinderGeometry(0.008, 0.008, 0.016, 8), darkMat, 0, -0.004, 0.08, Math.PI / 2);
+
+      // Grip hand for knife
+      const gripHandY = -0.015;
+      const gripHandZ = 0.02;
+      add(new THREE.BoxGeometry(0.054, 0.082, 0.075), gloveMat, 0.006, gripHandY, gripHandZ);
+      add(new THREE.BoxGeometry(0.058, 0.022, 0.04), gloveArmor, 0.006, gripHandY + 0.038, gripHandZ);
+      add(new THREE.BoxGeometry(0.02, 0.022, 0.046), gloveMat, -0.025, gripHandY + 0.032, gripHandZ - 0.004, 0.2);
+      add(new THREE.BoxGeometry(0.058, 0.066, 0.14), gloveMat, 0.016, gripHandY - 0.038, gripHandZ + 0.085, -0.34);
+      add(new THREE.BoxGeometry(0.062, 0.018, 0.03), gloveArmor, 0.016, gripHandY - 0.025, gripHandZ + 0.07, -0.34);
 
       this.muzzle.position.set(0, 0.01, -0.04 - bladeLen);
       return;
     }
 
+    // ── Firearms ─────────────────────────────────────────────────────────
     const halfBody = v.bodyLen * 0.5;
-    const barrelZ = -v.bodyLen - v.barrelLen * 0.5;
-    const muzzleZ = -v.bodyLen - v.barrelLen;
-    const axisY = v.bodyH * 0.06;
+      const barrelZ = -v.bodyLen - v.barrelLen * 0.5;
+      const muzzleZ = -v.bodyLen - v.barrelLen;
+      const axisY = v.bodyH * 0.06;
 
-    // Lower receiver, then a slightly narrower upper sitting on it. Two parts
-    // with a visible seam reads as a mechanism; one block reads as a prop.
-    add(new THREE.BoxGeometry(v.bodyW, v.bodyH * 0.62, v.bodyLen), bodyMat, 0, -v.bodyH * 0.2, -halfBody);
-    add(
-      new THREE.BoxGeometry(v.bodyW * 0.92, v.bodyH * 0.46, v.bodyLen * 0.94),
-      accentMat,
-      0,
-      v.bodyH * 0.29,
-      -halfBody,
-    );
+      // Lower receiver with flared magwell contour
+      add(new THREE.BoxGeometry(v.bodyW * 0.96, v.bodyH * 0.58, v.bodyLen), bodyMat, 0, -v.bodyH * 0.22, -halfBody);
+      // Upper receiver with realistic chamfer
+      add(new THREE.BoxGeometry(v.bodyW * 0.88, v.bodyH * 0.44, v.bodyLen * 0.94), accentMat, 0, v.bodyH * 0.28, -halfBody);
 
-    // Upper rail with teeth — a plain strip reads as a moulded ridge, and the
-    // teeth are most of what says "rail" at this size.
-    add(
-      new THREE.BoxGeometry(v.bodyW * 0.5, v.bodyH * 0.12, v.bodyLen * 0.72),
-      darkMat,
-      0,
-      v.bodyH * 0.56,
-      -v.bodyLen * 0.45,
-    );
-    const teeth = Math.max(3, Math.round(v.bodyLen * 14));
-    for (let i = 0; i < teeth; i++) {
-      const t = (i + 0.5) / teeth;
-      add(
-        new THREE.BoxGeometry(v.bodyW * 0.54, v.bodyH * 0.1, v.bodyLen * 0.022),
-        accentMat,
-        0,
-        v.bodyH * 0.62,
-        -v.bodyLen * (0.09 + t * 0.72),
-      );
-    }
-
-    // Ejection port, on the right where the player can see it.
-    add(
-      new THREE.BoxGeometry(0.004, v.bodyH * 0.3, v.bodyLen * 0.2),
-      darkMat,
-      v.bodyW * 0.5,
-      v.bodyH * 0.24,
-      -v.bodyLen * 0.62,
-    );
-
-    // Barrel, and a handguard over it for anything long enough to need one.
-    const barrelGeo = new THREE.CylinderGeometry(v.barrelR, v.barrelR, v.barrelLen, 12);
-    add(barrelGeo, darkMat, 0, axisY, barrelZ, Math.PI / 2);
-
-    if (v.barrelLen > 0.16) {
-      const guardLen = v.barrelLen * 0.62;
-      const guardZ = -v.bodyLen - guardLen * 0.5 - 0.01;
-      add(
-        new THREE.BoxGeometry(v.bodyW * 0.86, v.bodyH * 0.62, guardLen),
-        bodyMat,
-        0,
-        axisY - v.bodyH * 0.04,
-        guardZ,
-      );
-      // Cooling vents. Dark slots on a lighter body: the cheapest detail in the
-      // whole model and the one that most stops the handguard looking extruded.
-      const vents = 4;
-      for (let i = 0; i < vents; i++) {
-        const t = (i + 0.5) / vents;
+      // CNC Machined Picatinny Top Rail with precision slots
+      add(new THREE.BoxGeometry(v.bodyW * 0.52, v.bodyH * 0.12, v.bodyLen * 0.84), darkMat, 0, v.bodyH * 0.55, -v.bodyLen * 0.46);
+      const teeth = Math.max(4, Math.round(v.bodyLen * 18));
+      for (let i = 0; i < teeth; i++) {
+        const t = (i + 0.5) / teeth;
         add(
-          new THREE.BoxGeometry(v.bodyW * 0.9, v.bodyH * 0.2, guardLen * 0.1),
-          darkMat,
+          new THREE.BoxGeometry(v.bodyW * 0.56, v.bodyH * 0.09, v.bodyLen * 0.018),
+          accentMat,
           0,
-          axisY + v.bodyH * 0.02,
-          -v.bodyLen - 0.02 - t * guardLen * 0.92,
+          v.bodyH * 0.61,
+          -v.bodyLen * (0.06 + t * 0.82),
         );
       }
-    }
 
-    // Muzzle device with cut slots, so the end of the barrel has a shape.
-    add(
-      new THREE.CylinderGeometry(v.barrelR * 1.55, v.barrelR * 1.45, 0.052, 10),
-      accentMat,
-      0,
-      axisY,
-      muzzleZ + 0.026,
-      Math.PI / 2,
-    );
-    add(
-      new THREE.BoxGeometry(v.barrelR * 3.4, v.barrelR * 0.5, 0.012),
-      darkMat,
-      0,
-      axisY + v.barrelR * 0.9,
-      muzzleZ + 0.03,
-    );
+      // Ejection port with dust cover plate & visible brass bolt carrier
+      add(new THREE.BoxGeometry(0.005, v.bodyH * 0.32, v.bodyLen * 0.22), darkMat, v.bodyW * 0.48, v.bodyH * 0.24, -v.bodyLen * 0.58);
+      add(new THREE.BoxGeometry(0.006, v.bodyH * 0.18, v.bodyLen * 0.16), chromeMat, v.bodyW * 0.46, v.bodyH * 0.24, -v.bodyLen * 0.58);
+      add(new THREE.CylinderGeometry(0.006, 0.006, 0.018, 8), brassMat, v.bodyW * 0.45, v.bodyH * 0.24, -v.bodyLen * 0.57, Math.PI / 2);
+      // Brass deflector bump behind ejection port
+      add(new THREE.BoxGeometry(0.012, v.bodyH * 0.24, 0.022), bodyMat, v.bodyW * 0.46, v.bodyH * 0.24, -v.bodyLen * 0.44, 0, 0.25, 0);
 
-    // Magazine, angled forward the way a real box mag sits, with a floor plate.
-    if (v.magLen > 0) {
-      const mag = add(
-        new THREE.BoxGeometry(v.bodyW * 0.72, v.magLen, v.bodyLen * 0.2),
+      // Barrel & gas block assembly
+      const barrelGeo = new THREE.CylinderGeometry(v.barrelR, v.barrelR, v.barrelLen, 14);
+      add(barrelGeo, darkMat, 0, axisY, barrelZ, Math.PI / 2);
+
+      // M-LOK / Tactical handguard with cooling vents
+      if (v.barrelLen > 0.14) {
+        const guardLen = v.barrelLen * 0.66;
+        const guardZ = -v.bodyLen - guardLen * 0.5 - 0.01;
+        // Hexagonal profile handguard
+        add(new THREE.BoxGeometry(v.bodyW * 0.84, v.bodyH * 0.6, guardLen), bodyMat, 0, axisY - v.bodyH * 0.03, guardZ);
+        // Top gas tube inside handguard
+        add(new THREE.CylinderGeometry(v.barrelR * 0.45, v.barrelR * 0.45, guardLen * 0.95, 8), chromeMat, 0, axisY + v.bodyH * 0.25, guardZ, Math.PI / 2);
+        // Low-profile gas block
+        add(new THREE.BoxGeometry(v.bodyW * 0.48, v.bodyH * 0.35, 0.025), darkMat, 0, axisY + v.bodyH * 0.1, -v.bodyLen - guardLen * 0.9);
+
+        // Side M-LOK ventilation slots
+        const vents = Math.max(3, Math.round(guardLen * 22));
+        for (let i = 0; i < vents; i++) {
+          const t = (i + 0.5) / vents;
+          add(new THREE.BoxGeometry(v.bodyW * 0.88, v.bodyH * 0.16, guardLen * 0.08), darkMat, 0, axisY + v.bodyH * 0.04, -v.bodyLen - 0.015 - t * guardLen * 0.92);
+          add(new THREE.BoxGeometry(v.bodyW * 0.88, v.bodyH * 0.16, guardLen * 0.08), darkMat, 0, axisY - v.bodyH * 0.12, -v.bodyLen - 0.015 - t * guardLen * 0.92);
+        }
+      }
+
+      // Tactical Multi-Port Compensator / Muzzle Brake with vents
+      add(new THREE.CylinderGeometry(v.barrelR * 1.6, v.barrelR * 1.5, 0.054, 12), darkMat, 0, axisY, muzzleZ + 0.027, Math.PI / 2);
+      // Side exhaust ports
+      add(new THREE.BoxGeometry(v.barrelR * 3.6, v.barrelR * 0.55, 0.014), chromeMat, 0, axisY, muzzleZ + 0.034);
+      add(new THREE.BoxGeometry(v.barrelR * 3.6, v.barrelR * 0.55, 0.014), chromeMat, 0, axisY, muzzleZ + 0.018);
+      // Crown ring
+      add(new THREE.CylinderGeometry(v.barrelR * 1.3, v.barrelR * 1.65, 0.012, 12), accentMat, 0, axisY, muzzleZ + 0.006, Math.PI / 2);
+
+      // ── Tactical PMAG / Magazine ──────────────────────────────────────────
+      if (v.magLen > 0) {
+        const mag = add(
+          new THREE.BoxGeometry(v.bodyW * 0.76, v.magLen, v.bodyLen * 0.22),
+          gripMat,
+          0,
+          -v.bodyH * 0.5 - v.magLen * 0.42,
+          -v.bodyLen * 0.42,
+        );
+        mag.rotation.x = -0.13;
+
+        // PMAG Waffle Ribs & Witness window
+        const ribCount = Math.max(3, Math.round(v.magLen * 25));
+        for (let i = 0; i < ribCount; i++) {
+          const t = (i + 0.5) / ribCount;
+          const rib = add(
+            new THREE.BoxGeometry(v.bodyW * 0.82, v.magLen * 0.035, v.bodyLen * 0.24),
+            darkMat,
+            0,
+            -v.bodyH * 0.5 - v.magLen * (0.15 + t * 0.7),
+            -v.bodyLen * 0.42 - (t * 0.015),
+          );
+          rib.rotation.x = -0.13;
+          this.magGroup.add(rib);
+        }
+
+        // Witness window with visible brass rounds
+        const windowMesh = add(
+          new THREE.BoxGeometry(v.bodyW * 0.78, v.magLen * 0.35, 0.008),
+          darkMat,
+          v.bodyW * 0.39,
+          -v.bodyH * 0.5 - v.magLen * 0.48,
+          -v.bodyLen * 0.42,
+        );
+        windowMesh.rotation.x = -0.13;
+        const brassRound = add(
+          new THREE.CylinderGeometry(0.004, 0.004, v.magLen * 0.28, 6),
+          brassMat,
+          v.bodyW * 0.38,
+          -v.bodyH * 0.5 - v.magLen * 0.48,
+          -v.bodyLen * 0.42,
+        );
+        brassRound.rotation.x = -0.13;
+
+        // Reinforced baseplate
+        const plate = add(
+          new THREE.BoxGeometry(v.bodyW * 0.84, v.magLen * 0.1, v.bodyLen * 0.26),
+          darkMat,
+          0,
+          -v.bodyH * 0.5 - v.magLen * 0.94,
+          -v.bodyLen * 0.42 - v.magLen * 0.07,
+        );
+        plate.rotation.x = -0.13;
+
+        this.magGroup.add(mag, windowMesh, brassRound, plate);
+      }
+
+      // ── Ergonomic Grip & Trigger Assembly ────────────────────────────────
+      const grip = add(
+        new THREE.BoxGeometry(v.bodyW * 0.82, 0.125, 0.054),
         gripMat,
         0,
-        -v.bodyH * 0.5 - v.magLen * 0.42,
-        -v.bodyLen * 0.42,
-      );
-      mag.rotation.x = -0.13;
-      const plate = add(
-        new THREE.BoxGeometry(v.bodyW * 0.78, v.magLen * 0.09, v.bodyLen * 0.22),
-        darkMat,
-        0,
-        -v.bodyH * 0.5 - v.magLen * 0.92,
-        -v.bodyLen * 0.42 - v.magLen * 0.06,
-      );
-      plate.rotation.x = -0.13;
-      // Into the animated group, so a reload can drop it and put a fresh one in.
-      // `add` parented these to `gunGroup`; `Group.add` detaches from that on the
-      // way in, and their local transforms carry over unchanged because the group
-      // is resting at the identity.
-      this.magGroup.add(mag, plate);
-    }
-
-    // Grip, trigger guard, and a trigger inside it.
-    const grip = add(
-      new THREE.BoxGeometry(v.bodyW * 0.8, 0.12, 0.052),
-      gripMat,
-      0,
-      -v.bodyH * 0.5 - 0.055,
-      -v.bodyLen * 0.14,
-    );
-    grip.rotation.x = 0.22;
-    add(
-      new THREE.BoxGeometry(v.bodyW * 0.5, 0.008, 0.05),
-      darkMat,
-      0,
-      -v.bodyH * 0.5 - 0.036,
-      -v.bodyLen * 0.28,
-    );
-    add(
-      new THREE.BoxGeometry(v.bodyW * 0.2, 0.022, 0.007),
-      accentMat,
-      0,
-      -v.bodyH * 0.5 - 0.022,
-      -v.bodyLen * 0.26,
-    );
-
-    // Stock: buffer tube, cheek riser, rubber butt pad.
-    if (v.stock) {
-      add(
-        new THREE.CylinderGeometry(v.bodyH * 0.2, v.bodyH * 0.2, 0.1, 8),
-        accentMat,
-        0,
-        -0.006,
-        0.05,
-        Math.PI / 2,
-      );
-      add(new THREE.BoxGeometry(v.bodyW * 0.7, v.bodyH * 0.72, 0.12), bodyMat, 0, -0.016, 0.075);
-      add(new THREE.BoxGeometry(v.bodyW * 0.88, v.bodyH * 1.2, 0.02), gripMat, 0, -0.022, 0.138);
-    }
-
-    // The one part that identifies the action, per fire mode.
-    if (w.fireMode === 'pump') {
-      // Pump grip on the tube, forward of the receiver.
-      const pump = add(
-        new THREE.BoxGeometry(v.bodyW * 1.05, v.bodyH * 0.66, v.barrelLen * 0.3),
-        gripMat,
-        0,
-        axisY - v.bodyH * 0.5,
-        -v.bodyLen - v.barrelLen * 0.34,
-      );
-      // The forend is the part that strokes; the tube below it does not move.
-      this.actionGroup.add(pump);
-      // Magazine tube under the barrel.
-      add(
-        new THREE.CylinderGeometry(v.barrelR * 0.8, v.barrelR * 0.8, v.barrelLen * 0.86, 8),
-        darkMat,
-        0,
-        axisY - v.barrelR * 2.1,
-        -v.bodyLen - v.barrelLen * 0.43,
-        Math.PI / 2,
-      );
-    } else if (w.fireMode === 'bolt') {
-      // Bolt handle, out to the right and angled back — unmistakable in
-      // silhouette, which is the point.
-      const boltHandle = add(
-        new THREE.CylinderGeometry(0.007, 0.007, 0.062, 6),
-        accentMat,
-        v.bodyW * 0.62,
-        v.bodyH * 0.12,
-        -v.bodyLen * 0.3,
-        0,
-        0,
-        Math.PI / 2 - 0.35,
-      );
-      const boltKnob = add(
-        new THREE.SphereGeometry(0.013, 8, 6),
-        accentMat,
-        v.bodyW * 0.62 + 0.03,
-        v.bodyH * 0.12 - 0.011,
-        -v.bodyLen * 0.3,
-      );
-      // Handle and knob move as one. Both sit out to the right of the bore, so
-      // the group's roll about Z swings them up together and its Z translation
-      // draws them back — a lift-and-pull with two numbers.
-      this.actionGroup.add(boltHandle, boltKnob);
-    } else {
-      // Charging handle for the self-loaders.
-      const charging = add(
-        new THREE.BoxGeometry(0.03, v.bodyH * 0.16, 0.014),
-        accentMat,
-        v.bodyW * 0.42,
-        v.bodyH * 0.42,
+        -v.bodyH * 0.5 - 0.058,
         -v.bodyLen * 0.14,
       );
-      this.actionGroup.add(charging);
-    }
+      grip.rotation.x = 0.22;
+      // Stippling panels on grip sides
+      const stippleL = add(new THREE.BoxGeometry(0.004, 0.09, 0.04), darkMat, v.bodyW * 0.42, -v.bodyH * 0.5 - 0.058, -v.bodyLen * 0.14);
+      stippleL.rotation.x = 0.22;
+      const stippleR = add(new THREE.BoxGeometry(0.004, 0.09, 0.04), darkMat, -v.bodyW * 0.42, -v.bodyH * 0.5 - 0.058, -v.bodyLen * 0.14);
+      stippleR.rotation.x = 0.22;
 
-    // Sights, or a scope for anything with a real zoom.
-    if (w.scoped) {
-      const scopeY = v.bodyH * 0.98;
-      const scopeZ = -v.bodyLen * 0.5;
-      add(new THREE.CylinderGeometry(0.024, 0.024, 0.19, 14), darkMat, 0, scopeY, scopeZ, Math.PI / 2);
-      // Objective bell at the front, eyepiece at the back.
-      add(
-        new THREE.CylinderGeometry(0.031, 0.026, 0.036, 14),
-        darkMat,
-        0,
-        scopeY,
-        scopeZ - 0.108,
-        Math.PI / 2,
-      );
-      add(
-        new THREE.CylinderGeometry(0.028, 0.024, 0.03, 14),
-        darkMat,
-        0,
-        scopeY,
-        scopeZ + 0.104,
-        Math.PI / 2,
-      );
-      // A tinted lens disc in the eyepiece. It goes at the *rear* facing +Z, not
-      // the objective end: a circle faces +Z by default and the player is behind
-      // the gun, so glass on the muzzle end would be a surface aimed away from
-      // the only camera that ever sees this model.
-      const lensMat = new THREE.MeshPhongMaterial({
-        color: 0x2f4d63,
-        specular: 0xdfefff,
-        shininess: 120,
-      });
-      this.materials.push(lensMat);
-      add(new THREE.CircleGeometry(0.022, 16), lensMat, 0, scopeY, scopeZ + 0.12);
-      // Rings clamping it to the rail.
-      add(new THREE.BoxGeometry(0.03, 0.026, 0.016), accentMat, 0, scopeY - 0.026, scopeZ - 0.05);
-      add(new THREE.BoxGeometry(0.03, 0.026, 0.016), accentMat, 0, scopeY - 0.026, scopeZ + 0.05);
-    } else {
-      // Front post inside a protective hood, and a rear aperture.
-      add(new THREE.BoxGeometry(0.008, 0.024, 0.007), darkMat, 0, v.bodyH * 0.8, -v.bodyLen * 0.88);
-      add(new THREE.BoxGeometry(0.026, 0.006, 0.007), darkMat, 0, v.bodyH * 0.92, -v.bodyLen * 0.88);
-      add(new THREE.BoxGeometry(0.026, 0.022, 0.008), darkMat, 0, v.bodyH * 0.78, -v.bodyLen * 0.12);
-      add(
-        new THREE.BoxGeometry(0.008, 0.008, 0.009),
-        accentMat,
-        0,
-        v.bodyH * 0.82,
-        -v.bodyLen * 0.12,
-      );
-    }
+      // Enlarged combat trigger guard
+      add(new THREE.BoxGeometry(v.bodyW * 0.52, 0.009, 0.055), darkMat, 0, -v.bodyH * 0.5 - 0.04, -v.bodyLen * 0.28);
+      add(new THREE.BoxGeometry(v.bodyW * 0.52, 0.04, 0.009), darkMat, 0, -v.bodyH * 0.5 - 0.02, -v.bodyLen * 0.31);
+      // Skeletonized curved combat trigger
+      add(new THREE.BoxGeometry(v.bodyW * 0.18, 0.026, 0.008), chromeMat, 0, -v.bodyH * 0.5 - 0.022, -v.bodyLen * 0.26, -0.2);
 
-    // Hands. Still deliberately simple — anything more detailed pulls the eye off
-    // the crosshair — but a palm with a thumb and a wrist behind it reads as a
-    // hand holding the gun, where a lone cube reads as a cube near the gun.
-    const skin = new THREE.MeshPhongMaterial({
-      color: 0x333a44,
-      specular: 0x1a1e24,
-      shininess: 10,
-    });
-    this.materials.push(skin);
+      // ── Tactical Stock ───────────────────────────────────────────────────
+      if (v.stock) {
+        // Buffer tube with position holes
+        add(new THREE.CylinderGeometry(v.bodyH * 0.19, v.bodyH * 0.19, 0.12, 10), darkMat, 0, -0.006, 0.06, Math.PI / 2);
+        // Crane stock cheek weld body
+        add(new THREE.BoxGeometry(v.bodyW * 0.74, v.bodyH * 0.74, 0.13), bodyMat, 0, -0.016, 0.08);
+        // Top cheek riser
+        add(new THREE.BoxGeometry(v.bodyW * 0.62, v.bodyH * 0.2, 0.1), gripMat, 0, v.bodyH * 0.36, 0.08);
+        // Ribbed rubber recoil buttpad
+        add(new THREE.BoxGeometry(v.bodyW * 0.9, v.bodyH * 1.25, 0.022), gripMat, 0, -0.022, 0.148);
+        for (let i = 0; i < 4; i++) {
+          add(new THREE.BoxGeometry(v.bodyW * 0.86, v.bodyH * 0.12, 0.005), darkMat, 0, -0.06 + i * 0.028, 0.16);
+        }
+      }
 
-    const gripHandY = -v.bodyH * 0.5 - 0.058;
+      // ── Fire-Mode Actions ────────────────────────────────────────────────
+      if (w.fireMode === 'pump') {
+        const pump = add(
+          new THREE.BoxGeometry(v.bodyW * 1.08, v.bodyH * 0.7, v.barrelLen * 0.32),
+          gripMat,
+          0,
+          axisY - v.bodyH * 0.48,
+          -v.bodyLen - v.barrelLen * 0.34,
+        );
+        // Grooved pump traction ridges
+        for (let i = 0; i < 5; i++) {
+          const rib = add(
+            new THREE.BoxGeometry(v.bodyW * 1.12, v.bodyH * 0.72, 0.01),
+            darkMat,
+            0,
+            axisY - v.bodyH * 0.48,
+            -v.bodyLen - v.barrelLen * (0.2 + i * 0.032),
+          );
+          this.actionGroup.add(rib);
+        }
+        this.actionGroup.add(pump);
+        // Extended magazine tube under barrel with dual clamp
+        add(new THREE.CylinderGeometry(v.barrelR * 0.85, v.barrelR * 0.85, v.barrelLen * 0.88, 10), darkMat, 0, axisY - v.barrelR * 2.1, -v.bodyLen - v.barrelLen * 0.44, Math.PI / 2);
+        add(new THREE.BoxGeometry(v.bodyW * 0.6, v.barrelR * 3.5, 0.02), darkMat, 0, axisY - v.barrelR * 1.1, -v.bodyLen - v.barrelLen * 0.82);
+      } else if (w.fireMode === 'bolt') {
+        // Swept bolt handle with knurled tactical knob
+        const boltHandle = add(
+          new THREE.CylinderGeometry(0.006, 0.006, 0.065, 8),
+          chromeMat,
+          v.bodyW * 0.62,
+          v.bodyH * 0.12,
+          -v.bodyLen * 0.3,
+          0,
+          0,
+          Math.PI / 2 - 0.38,
+        );
+        const boltKnob = add(
+          new THREE.SphereGeometry(0.015, 10, 8),
+          darkMat,
+          v.bodyW * 0.62 + 0.034,
+          v.bodyH * 0.12 - 0.012,
+          -v.bodyLen * 0.3,
+        );
+        const boltSleeve = add(
+          new THREE.CylinderGeometry(0.014, 0.014, 0.08, 10),
+          chromeMat,
+          0,
+          v.bodyH * 0.22,
+          -v.bodyLen * 0.35,
+          Math.PI / 2,
+        );
+        this.actionGroup.add(boltHandle, boltKnob, boltSleeve);
+      } else {
+        // Ambidextrous charging handle wings
+        const charging = add(
+          new THREE.BoxGeometry(0.038, v.bodyH * 0.16, 0.016),
+          accentMat,
+          v.bodyW * 0.38,
+          v.bodyH * 0.44,
+          -v.bodyLen * 0.12,
+        );
+        const latch = add(
+          new THREE.BoxGeometry(0.014, v.bodyH * 0.12, 0.012),
+          darkMat,
+          v.bodyW * 0.48,
+          v.bodyH * 0.44,
+          -v.bodyLen * 0.12,
+        );
+        this.actionGroup.add(charging, latch);
+      }
+
+      // ── Sights & Tactical Optics ─────────────────────────────────────────
+      if (w.scoped) {
+        // ── High-Magnification Sniper Optic (Longshot) ───────────────────────
+        const scopeY = v.bodyH * 1.05;
+        const scopeZ = -v.bodyLen * 0.52;
+        // Main 34mm tube
+        add(new THREE.CylinderGeometry(0.024, 0.024, 0.22, 16), darkMat, 0, scopeY, scopeZ, Math.PI / 2);
+        // Objective bell & sunshade forward
+        add(new THREE.CylinderGeometry(0.033, 0.026, 0.045, 16), darkMat, 0, scopeY, scopeZ - 0.125, Math.PI / 2);
+        add(new THREE.CylinderGeometry(0.033, 0.033, 0.035, 16), accentMat, 0, scopeY, scopeZ - 0.16, Math.PI / 2);
+        // Eyepiece bell back
+        add(new THREE.CylinderGeometry(0.029, 0.024, 0.038, 16), darkMat, 0, scopeY, scopeZ + 0.12, Math.PI / 2);
+        // Knurled magnification zoom ring
+        add(new THREE.CylinderGeometry(0.027, 0.027, 0.02, 16), gripMat, 0, scopeY, scopeZ + 0.085, Math.PI / 2);
+        // Tactical Target Turrets (Top Elevation & Right Windage)
+        add(new THREE.CylinderGeometry(0.012, 0.012, 0.026, 12), darkMat, 0, scopeY + 0.026, scopeZ, 0, 0, 0);
+        add(new THREE.CylinderGeometry(0.012, 0.012, 0.026, 12), darkMat, 0.026, scopeY, scopeZ, 0, 0, Math.PI / 2);
+        // Cantilever dual-ring mounting base with locking nuts
+        add(new THREE.BoxGeometry(0.034, 0.028, 0.02), accentMat, 0, scopeY - 0.028, scopeZ - 0.06);
+        add(new THREE.BoxGeometry(0.034, 0.028, 0.02), accentMat, 0, scopeY - 0.028, scopeZ + 0.05);
+        add(new THREE.BoxGeometry(0.026, 0.016, 0.16), darkMat, 0, scopeY - 0.036, scopeZ);
+        // Rear anti-reflective emerald multi-coated glass disc
+        add(new THREE.CircleGeometry(0.024, 16), opticLensMat, 0, scopeY, scopeZ + 0.139);
+
+        // Folded tactical bipod on forearm
+        add(new THREE.BoxGeometry(v.bodyW * 0.6, 0.018, 0.03), darkMat, 0, axisY - v.bodyH * 0.32, -v.bodyLen - 0.06);
+        add(new THREE.CylinderGeometry(0.005, 0.005, 0.14, 8), darkMat, -v.bodyW * 0.35, axisY - v.bodyH * 0.32, -v.bodyLen - 0.12, Math.PI / 2);
+        add(new THREE.CylinderGeometry(0.005, 0.005, 0.14, 8), darkMat, v.bodyW * 0.35, axisY - v.bodyH * 0.32, -v.bodyLen - 0.12, Math.PI / 2);
+      } else if (w.slot === 'primary') {
+        // ── Modern Holographic / Reflex Sight (Ranger / Vector / Breacher) ──
+        const sightY = v.bodyH * 0.88;
+        const sightZ = -v.bodyLen * 0.42;
+        // Sight Picatinny mount base
+        add(new THREE.BoxGeometry(v.bodyW * 0.62, 0.016, 0.08), darkMat, 0, sightY - 0.02, sightZ);
+        // Protective aluminum rectangular hood
+        add(new THREE.BoxGeometry(v.bodyW * 0.68, 0.052, 0.075), accentMat, 0, sightY + 0.018, sightZ);
+        // Inner optical viewport cutout
+        add(new THREE.BoxGeometry(v.bodyW * 0.54, 0.042, 0.078), darkMat, 0, sightY + 0.018, sightZ);
+        // Optical glass lens with emerald multi-coating
+        const glass = add(new THREE.PlaneGeometry(v.bodyW * 0.5, 0.038), opticLensMat, 0, sightY + 0.018, sightZ + 0.02);
+        glass.rotation.x = -0.06;
+        // Illuminated glowing red holographic center reticle dot!
+        add(new THREE.CircleGeometry(0.0035, 10), reticleRedMat, 0, sightY + 0.018, sightZ + 0.021);
+        add(new THREE.RingGeometry(0.008, 0.01, 14), reticleRedMat, 0, sightY + 0.018, sightZ + 0.021);
+        // Elevation & windage adjustment dials on sight hood
+        add(new THREE.CylinderGeometry(0.005, 0.005, 0.008, 8), chromeMat, v.bodyW * 0.36, sightY + 0.02, sightZ, 0, 0, Math.PI / 2);
+        add(new THREE.CylinderGeometry(0.005, 0.005, 0.008, 8), chromeMat, 0, sightY + 0.046, sightZ);
+      } else {
+        // ── High-Visibility Combat Sights (Sidearm) ──────────────────────────
+        // Rear anti-glare notched aperture
+        add(new THREE.BoxGeometry(0.028, 0.022, 0.012), darkMat, 0, v.bodyH * 0.78, -v.bodyLen * 0.1);
+        add(new THREE.BoxGeometry(0.008, 0.014, 0.014), bodyMat, 0, v.bodyH * 0.84, -v.bodyLen * 0.1);
+        // High-vis green fiber-optic dots on rear notch
+        add(new THREE.CircleGeometry(0.002, 6), reticleGreenMat, -0.009, v.bodyH * 0.82, -v.bodyLen * 0.092);
+        add(new THREE.CircleGeometry(0.002, 6), reticleGreenMat, 0.009, v.bodyH * 0.82, -v.bodyLen * 0.092);
+
+        // Front sight post with high-vis red fiber-optic rod
+        add(new THREE.BoxGeometry(0.009, 0.024, 0.012), darkMat, 0, v.bodyH * 0.78, -v.bodyLen * 0.88);
+        add(new THREE.CylinderGeometry(0.0025, 0.0025, 0.01, 6), reticleRedMat, 0, v.bodyH * 0.84, -v.bodyLen * 0.88, Math.PI / 2);
+      }
+
+      this.muzzle.position.set(0, axisY, muzzleZ);
+
+    // ── Operator Tactical Hands & Combat Gloves ──────────────────────────────
+    const gripHandY = -v.bodyH * 0.5 - 0.06;
     const gripHandZ = -v.bodyLen * 0.13;
-    add(new THREE.BoxGeometry(0.052, 0.078, 0.07), skin, 0.006, gripHandY, gripHandZ);
-    // Thumb over the top of the grip.
-    add(
-      new THREE.BoxGeometry(0.018, 0.02, 0.044),
-      skin,
-      -0.024,
-      gripHandY + 0.03,
-      gripHandZ - 0.004,
-      0.2,
-    );
-    // Forearm running back and down out of frame.
-    add(new THREE.BoxGeometry(0.056, 0.062, 0.13), skin, 0.016, gripHandY - 0.036, gripHandZ + 0.08, -0.34);
+    // Palm & main glove body
+    add(new THREE.BoxGeometry(0.054, 0.082, 0.075), gloveMat, 0.006, gripHandY, gripHandZ);
+    // Molded carbon fiber knuckle armor protector
+    add(new THREE.BoxGeometry(0.058, 0.022, 0.04), gloveArmor, 0.006, gripHandY + 0.038, gripHandZ);
+    // Segmented thumb wrapped over grip
+    add(new THREE.BoxGeometry(0.02, 0.022, 0.046), gloveMat, -0.025, gripHandY + 0.032, gripHandZ - 0.004, 0.2);
+    // Tactical wrist cuff with retention strap
+    add(new THREE.BoxGeometry(0.058, 0.066, 0.14), gloveMat, 0.016, gripHandY - 0.038, gripHandZ + 0.085, -0.34);
+    add(new THREE.BoxGeometry(0.062, 0.018, 0.03), gloveArmor, 0.016, gripHandY - 0.025, gripHandZ + 0.07, -0.34);
 
     if (v.magLen > 0 || v.stock) {
-      // Support hand on the handguard, with fingers wrapping under.
+      // Support hand on handguard with tactical segmented fingers
       const supZ = -v.bodyLen - v.barrelLen * 0.34;
-      const supY = -v.bodyH * 0.5 - 0.028;
-      add(new THREE.BoxGeometry(0.05, 0.072, 0.085), skin, -0.012, supY, supZ);
-      add(new THREE.BoxGeometry(0.056, 0.02, 0.075), skin, -0.004, supY + 0.036, supZ, 0, 0, 0.12);
-      add(new THREE.BoxGeometry(0.05, 0.058, 0.1), skin, -0.026, supY - 0.03, supZ + 0.075, -0.3, 0, 0.2);
+      const supY = -v.bodyH * 0.5 - 0.03;
+      add(new THREE.BoxGeometry(0.052, 0.076, 0.088), gloveMat, -0.012, supY, supZ);
+      add(new THREE.BoxGeometry(0.058, 0.024, 0.078), gloveArmor, -0.004, supY + 0.038, supZ, 0, 0, 0.12);
+      add(new THREE.BoxGeometry(0.052, 0.062, 0.11), gloveMat, -0.026, supY - 0.032, supZ + 0.08, -0.3, 0, 0.2);
     }
-
-    this.muzzle.position.set(0, axisY, muzzleZ);
   }
 
   /** Swaps the weapon and starts the raise animation. */

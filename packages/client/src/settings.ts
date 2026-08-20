@@ -26,6 +26,10 @@ export interface Settings {
   toggleSprint: boolean;
   /** Fire the moment the magazine refills instead of waiting for a new click. */
   autoReload: boolean;
+  /** Auto-aim / aim assist magnetism on targets. */
+  aimAssist: boolean;
+  /** Strength of the auto-aim assist (0.2 to 2.0). */
+  aimAssistStrength: number;
 
   /** Renderer scale: 1 = native, 0.75 = quarter fewer pixels, etc. */
   resolution: number;
@@ -89,6 +93,8 @@ export const DEFAULTS: Settings = {
   toggleAds: false,
   toggleSprint: false,
   autoReload: true,
+  aimAssist: true,
+  aimAssistStrength: 1.0,
 
   resolution: 1,
   shadows: 1,
@@ -121,6 +127,7 @@ export const DEFAULTS: Settings = {
 const RANGES: Partial<Record<keyof Settings, [number, number]>> = {
   sensitivity: [0.0002, 0.012],
   adsSensitivity: [0.2, 1.5],
+  aimAssistStrength: [0.2, 2.0],
   fov: [60, 110],
   resolution: [0.5, 1],
   shadows: [0, 2],
@@ -289,6 +296,18 @@ export const SETTINGS_SCHEMA: Record<TabKey, Control[]> = {
     { kind: 'toggle', key: 'toggleAds', label: 'Toggle aim', hint: 'Click to aim instead of holding' },
     { kind: 'toggle', key: 'toggleSprint', label: 'Toggle sprint' },
     { kind: 'toggle', key: 'autoReload', label: 'Auto reload', hint: 'Reload automatically when the magazine runs dry' },
+    { kind: 'group', label: 'Targeting & Auto-Aim' },
+    { kind: 'toggle', key: 'aimAssist', label: 'Auto-aim assist', hint: 'Magnetically tracks targets near crosshair when aiming & scoping' },
+    {
+      kind: 'slider',
+      key: 'aimAssistStrength',
+      label: 'Auto-aim strength',
+      hint: 'Magnetism strength when tracking targets',
+      min: 0.2,
+      max: 2.0,
+      step: 0.1,
+      format: (v) => `${(v * 100).toFixed(0)}%`,
+    },
   ],
   video: [
     {
