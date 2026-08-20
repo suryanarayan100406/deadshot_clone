@@ -261,6 +261,7 @@ export class ViewModel {
 
   private flashUntil = 0;
   private visible = true;
+  private adsSightY = 0.082;
   private baseFov: number;
 
   constructor(fov: number) {
@@ -518,14 +519,23 @@ export class ViewModel {
       shininess: 140,
     });
     const opticLensMat = new THREE.MeshPhongMaterial({
-      color: 0x18302c,
+      color: 0x102824,
       specular: 0x80ffd0,
       shininess: 140,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.12,
+      depthWrite: false,
     });
-    const reticleRedMat = new THREE.MeshBasicMaterial({ color: 0xff2515 });
-    const reticleGreenMat = new THREE.MeshBasicMaterial({ color: 0x15ff55 });
+    const reticleRedMat = new THREE.MeshBasicMaterial({
+      color: 0xff1808,
+      transparent: true,
+      depthWrite: false,
+    });
+    const reticleGreenMat = new THREE.MeshBasicMaterial({
+      color: 0x10ff40,
+      transparent: true,
+      depthWrite: false,
+    });
     const gloveMat = new THREE.MeshPhongMaterial({
       map: getCarbonTexture(),
       color: 0x303640,
@@ -841,6 +851,7 @@ export class ViewModel {
 
       // ── Sights & Tactical Optics ─────────────────────────────────────────
       if (w.scoped) {
+        this.adsSightY = v.bodyH * 1.05;
         // ── High-Magnification Sniper Optic (Longshot) ───────────────────────
         const scopeY = v.bodyH * 1.05;
         const scopeZ = -v.bodyLen * 0.52;
@@ -854,50 +865,73 @@ export class ViewModel {
         // Knurled magnification zoom ring
         add(new THREE.CylinderGeometry(0.027, 0.027, 0.02, 16), gripMat, 0, scopeY, scopeZ + 0.085, Math.PI / 2);
         // Tactical Target Turrets (Top Elevation & Right Windage)
-        add(new THREE.CylinderGeometry(0.012, 0.012, 0.026, 12), darkMat, 0, scopeY + 0.026, scopeZ, 0, 0, 0);
+        add(new THREE.CylinderGeometry(0.012, 0.012, 0.026, 12), darkMat, 0, scopeY + 0.026, scopeZ);
         add(new THREE.CylinderGeometry(0.012, 0.012, 0.026, 12), darkMat, 0.026, scopeY, scopeZ, 0, 0, Math.PI / 2);
         // Cantilever dual-ring mounting base with locking nuts
         add(new THREE.BoxGeometry(0.034, 0.028, 0.02), accentMat, 0, scopeY - 0.028, scopeZ - 0.06);
         add(new THREE.BoxGeometry(0.034, 0.028, 0.02), accentMat, 0, scopeY - 0.028, scopeZ + 0.05);
         add(new THREE.BoxGeometry(0.026, 0.016, 0.16), darkMat, 0, scopeY - 0.036, scopeZ);
-        // Rear anti-reflective emerald multi-coated glass disc
-        add(new THREE.CircleGeometry(0.024, 16), opticLensMat, 0, scopeY, scopeZ + 0.139);
 
         // Folded tactical bipod on forearm
         add(new THREE.BoxGeometry(v.bodyW * 0.6, 0.018, 0.03), darkMat, 0, axisY - v.bodyH * 0.32, -v.bodyLen - 0.06);
         add(new THREE.CylinderGeometry(0.005, 0.005, 0.14, 8), darkMat, -v.bodyW * 0.35, axisY - v.bodyH * 0.32, -v.bodyLen - 0.12, Math.PI / 2);
         add(new THREE.CylinderGeometry(0.005, 0.005, 0.14, 8), darkMat, v.bodyW * 0.35, axisY - v.bodyH * 0.32, -v.bodyLen - 0.12, Math.PI / 2);
       } else if (w.slot === 'primary') {
-        // ── Modern Holographic / Reflex Sight (Ranger / Vector / Breacher) ──
+        // ── Modern Open Reflex / Holographic Sight (Striker / Viper / Breacher) ──
         const sightY = v.bodyH * 0.88;
         const sightZ = -v.bodyLen * 0.42;
-        // Sight Picatinny mount base
-        add(new THREE.BoxGeometry(v.bodyW * 0.62, 0.016, 0.08), darkMat, 0, sightY - 0.02, sightZ);
-        // Protective aluminum rectangular hood
-        add(new THREE.BoxGeometry(v.bodyW * 0.68, 0.052, 0.075), accentMat, 0, sightY + 0.018, sightZ);
-        // Inner optical viewport cutout
-        add(new THREE.BoxGeometry(v.bodyW * 0.54, 0.042, 0.078), darkMat, 0, sightY + 0.018, sightZ);
-        // Optical glass lens with emerald multi-coating
-        const glass = add(new THREE.PlaneGeometry(v.bodyW * 0.5, 0.038), opticLensMat, 0, sightY + 0.018, sightZ + 0.02);
-        glass.rotation.x = -0.06;
-        // Illuminated glowing red holographic center reticle dot!
-        add(new THREE.CircleGeometry(0.0035, 10), reticleRedMat, 0, sightY + 0.018, sightZ + 0.021);
-        add(new THREE.RingGeometry(0.008, 0.01, 14), reticleRedMat, 0, sightY + 0.018, sightZ + 0.021);
-        // Elevation & windage adjustment dials on sight hood
-        add(new THREE.CylinderGeometry(0.005, 0.005, 0.008, 8), chromeMat, v.bodyW * 0.36, sightY + 0.02, sightZ, 0, 0, Math.PI / 2);
-        add(new THREE.CylinderGeometry(0.005, 0.005, 0.008, 8), chromeMat, 0, sightY + 0.046, sightZ);
-      } else {
-        // ── High-Visibility Combat Sights (Sidearm) ──────────────────────────
-        // Rear anti-glare notched aperture
-        add(new THREE.BoxGeometry(0.028, 0.022, 0.012), darkMat, 0, v.bodyH * 0.78, -v.bodyLen * 0.1);
-        add(new THREE.BoxGeometry(0.008, 0.014, 0.014), bodyMat, 0, v.bodyH * 0.84, -v.bodyLen * 0.1);
-        // High-vis green fiber-optic dots on rear notch
-        add(new THREE.CircleGeometry(0.002, 6), reticleGreenMat, -0.009, v.bodyH * 0.82, -v.bodyLen * 0.092);
-        add(new THREE.CircleGeometry(0.002, 6), reticleGreenMat, 0.009, v.bodyH * 0.82, -v.bodyLen * 0.092);
+        const frameW = v.bodyW * 0.64;
+        const frameH = 0.046;
+        const postW = 0.007;
+        this.adsSightY = sightY + frameH * 0.5;
 
-        // Front sight post with high-vis red fiber-optic rod
-        add(new THREE.BoxGeometry(0.009, 0.024, 0.012), darkMat, 0, v.bodyH * 0.78, -v.bodyLen * 0.88);
-        add(new THREE.CylinderGeometry(0.0025, 0.0025, 0.01, 6), reticleRedMat, 0, v.bodyH * 0.84, -v.bodyLen * 0.88, Math.PI / 2);
+        // Sight Picatinny mount base
+        add(new THREE.BoxGeometry(frameW, 0.012, 0.08), darkMat, 0, sightY - 0.016, sightZ);
+        // Bottom basebar under window
+        add(new THREE.BoxGeometry(frameW, 0.007, 0.065), accentMat, 0, sightY, sightZ);
+        // Left frame pillar
+        add(new THREE.BoxGeometry(postW, frameH, 0.065), accentMat, -frameW * 0.5 + postW * 0.5, sightY + frameH * 0.5, sightZ);
+        // Right frame pillar
+        add(new THREE.BoxGeometry(postW, frameH, 0.065), accentMat, frameW * 0.5 - postW * 0.5, sightY + frameH * 0.5, sightZ);
+        // Top protective hood bar
+        add(new THREE.BoxGeometry(frameW, 0.007, 0.065), accentMat, 0, sightY + frameH, sightZ);
+
+        // Center Optical Window: COMPLETELY OPEN / HOLLOW WITH ANTI-REFLECTIVE TINTED GLASS
+        const glass = add(new THREE.PlaneGeometry(frameW - postW * 2, frameH - 0.007), opticLensMat, 0, sightY + frameH * 0.5, sightZ + 0.01);
+        glass.rotation.x = -0.04;
+
+        // Floating illuminated bright red holographic center reticle dot and ring!
+        const redDot = add(new THREE.CircleGeometry(0.0022, 12), reticleRedMat, 0, sightY + frameH * 0.5, sightZ + 0.012);
+        const redRing = add(new THREE.RingGeometry(0.006, 0.008, 16), reticleRedMat, 0, sightY + frameH * 0.5, sightZ + 0.012);
+        redDot.renderOrder = 10;
+        redRing.renderOrder = 10;
+
+        // Elevation & windage adjustment dials on sight frame
+        add(new THREE.CylinderGeometry(0.004, 0.004, 0.006, 8), chromeMat, frameW * 0.5 + 0.003, sightY + frameH * 0.5, sightZ, 0, 0, Math.PI / 2);
+        add(new THREE.CylinderGeometry(0.004, 0.004, 0.006, 8), chromeMat, 0, sightY + frameH + 0.003, sightZ);
+      } else {
+        // ── High-Visibility Combat Sights (Sidearm / Pistol) ─────────────────
+        const rearY = v.bodyH * 0.80;
+        const rearZ = -v.bodyLen * 0.1;
+        this.adsSightY = rearY + 0.004;
+
+        // Rear notched aperture with hollow center gap
+        add(new THREE.BoxGeometry(0.01, 0.018, 0.01), darkMat, -0.012, rearY, rearZ);
+        add(new THREE.BoxGeometry(0.01, 0.018, 0.01), darkMat, 0.012, rearY, rearZ);
+        add(new THREE.BoxGeometry(0.034, 0.006, 0.01), darkMat, 0, rearY - 0.01, rearZ);
+
+        // High-vis green fiber-optic dots on rear notch
+        const greenL = add(new THREE.CircleGeometry(0.0018, 8), reticleGreenMat, -0.012, rearY + 0.003, rearZ + 0.006);
+        const greenR = add(new THREE.CircleGeometry(0.0018, 8), reticleGreenMat, 0.012, rearY + 0.003, rearZ + 0.006);
+        greenL.renderOrder = 10;
+        greenR.renderOrder = 10;
+
+        // Front sight post with high-vis red fiber-optic dot
+        const frontY = v.bodyH * 0.80;
+        const frontZ = -v.bodyLen * 0.88;
+        add(new THREE.BoxGeometry(0.006, 0.02, 0.01), darkMat, 0, frontY, frontZ);
+        const redFront = add(new THREE.CircleGeometry(0.0018, 8), reticleRedMat, 0, frontY + 0.004, frontZ + 0.006);
+        redFront.renderOrder = 10;
       }
 
       this.muzzle.position.set(0, axisY, muzzleZ);
@@ -1303,10 +1337,11 @@ export class ViewModel {
       }
     }
 
-    // Compose. ADS blends the whole rest pose toward the sight line.
+    // Compose. ADS aligns the sight line directly with the eye at y = 0.
     const a = this.adsFactor;
-    const px = HIP_POS.x + (ADS_POS.x - HIP_POS.x) * a;
-    const py = HIP_POS.y + (ADS_POS.y - HIP_POS.y) * a;
+    const adsY = -this.adsSightY;
+    const px = HIP_POS.x * (1 - a);
+    const py = HIP_POS.y + (adsY - HIP_POS.y) * a;
     const pz = HIP_POS.z + (ADS_POS.z - HIP_POS.z) * a;
 
     this.root.position.set(
@@ -1338,9 +1373,8 @@ export class ViewModel {
     this.actionGroup.position.set(0, 0, actionZ * mech);
     this.actionGroup.rotation.set(0, 0, actionLift * mech);
 
-    // Scoped weapons hide the model entirely at full zoom — the scope overlay
-    // takes over, and a rifle body across the screen would just be in the way.
-    const scopeHide = w.scoped && a > 0.82;
+    // Scoped weapons hide the 3D gun model during zoom so the 2D optic overlay has an unobstructed view
+    const scopeHide = w.scoped && a > 0.15;
     this.root.visible = this.visible && !scopeHide;
 
     // Fade the flash out. The decay is deliberately not linear: powder burns out
