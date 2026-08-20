@@ -628,7 +628,14 @@ class Game {
 
   private async pollOnline(): Promise<void> {
     try {
-      const res = await fetch('/api/status', { cache: 'no-store' });
+      const envHost = ((import.meta.env.VITE_SERVER_HOST || import.meta.env.VITE_SERVER_URL || '') as string).trim();
+      let endpoint = '/api/status';
+      if (envHost) {
+        const cleaned = envHost.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/+$/, '');
+        const proto = location.protocol === 'https:' || /^https:/i.test(envHost) || /^wss:/i.test(envHost) ? 'https:' : 'http:';
+        endpoint = `${proto}//${cleaned}/api/status`;
+      }
+      const res = await fetch(endpoint, { cache: 'no-store' });
       if (!res.ok) throw new Error(`status ${res.status}`);
       const body = (await res.json()) as { players?: unknown };
       this.menu.setOnline(typeof body.players === 'number' ? body.players : 0);

@@ -146,10 +146,16 @@ export class Net {
     this.closedByUs = false;
     this.setStatus('connecting');
 
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Same-origin `/ws`: in dev Vite proxies it, in production the game server
-    // serves the bundle itself, so no URL ever needs configuring.
-    const url = `${proto}//${location.host}/ws`;
+    const envHost = ((import.meta.env.VITE_SERVER_HOST || import.meta.env.VITE_SERVER_URL || '') as string).trim();
+    let url: string;
+    if (envHost) {
+      const cleaned = envHost.replace(/^https?:\/\//i, '').replace(/^wss?:\/\//i, '').replace(/\/+$/, '');
+      const proto = location.protocol === 'https:' || /^https:/i.test(envHost) || /^wss:/i.test(envHost) ? 'wss:' : 'ws:';
+      url = `${proto}//${cleaned}/ws`;
+    } else {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      url = `${proto}//${location.host}/ws`;
+    }
 
     let ws: WebSocket;
     try {

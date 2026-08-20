@@ -343,9 +343,9 @@ export function buildCharacter(shadows: boolean): CharacterRig {
   for (const arm of [armL, armR]) {
     // Shoulder rank/team patch
     detail(arm, 0.135, 0.11, 0.135, bodyMat, 0, -0.03, 0);
-    // Hard tactical elbow pad
+    // Hard tactical elbow pad on back of arm (+Z)
     detail(arm, 0.138, 0.1, 0.138, gearMat, 0, -0.26, 0);
-    detail(arm, 0.11, 0.07, 0.03, metalMat, 0, -0.26, -0.06);
+    detail(arm, 0.11, 0.07, 0.03, metalMat, 0, -0.26, 0.06);
     // Combat Operator Glove with carbon knuckle protector
     detail(arm, 0.13, 0.12, 0.14, gearMat, 0, -0.47, 0);
     detail(arm, 0.11, 0.03, 0.07, metalMat, 0, -0.45, -0.04);
@@ -386,7 +386,7 @@ export function buildCharacter(shadows: boolean): CharacterRig {
   if (soldierAsset) {
     soldierRoot = cloneSkeleton(soldierAsset.scene) as THREE.Group;
     soldierRoot.scale.setScalar(0.96);
-    soldierRoot.rotation.y = Math.PI;
+    soldierRoot.rotation.y = 0;
 
     soldierRoot.traverse((obj) => {
       if ((obj as THREE.Mesh).isMesh) {
@@ -857,10 +857,10 @@ class Actor {
       this.rig.mixer.update(dt);
 
       if (this.rig.spineBone) {
-        this.rig.spineBone.rotation.x = -pitch * 0.45;
+        this.rig.spineBone.rotation.x = pitch * 0.45;
       }
       if (this.rig.headBone) {
-        this.rig.headBone.rotation.x = -pitch * 0.35;
+        this.rig.headBone.rotation.x = pitch * 0.35;
       }
       if (this.rig.soldierRoot) {
         this.rig.soldierRoot.scale.set(0.96, 0.96 * k, 0.96);
