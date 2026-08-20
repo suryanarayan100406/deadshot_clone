@@ -111,21 +111,22 @@ class ShellPool {
     const m = this.mesh[i]!;
 
     m.material = shotgun ? this.hull : this.brass;
-    // Length is roughly four bore diameters for a rifle case, less for a hull.
-    const r = calibre * (shotgun ? 1.25 : 1.0);
-    m.scale.set(r * 2.1, r * (shotgun ? 5.2 : 4.4), r * 2.1);
+    // Authentic realistic bullet casing dimensions (in metres)
+    const r = shotgun ? 0.0055 : 0.0032;
+    const h = shotgun ? 0.024 : 0.015;
+    m.scale.set(r * 2, h, r * 2);
     m.position.copy(at);
     m.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
     m.visible = true;
 
-    // Out to the right and up, with scatter, then rotated into the gun's frame.
+    // Crisp high-velocity ejection out to the right side with realistic arc
     this.vel[i]!
-      .set(1.25 + Math.random() * 0.5, 0.85 + Math.random() * 0.45, 0.35 + Math.random() * 0.3)
+      .set(1.9 + Math.random() * 0.4, 0.8 + Math.random() * 0.35, 0.3 + Math.random() * 0.2)
       .applyQuaternion(basis);
     this.spin[i]!.set(
-      (Math.random() * 2 - 1) * 22,
-      (Math.random() * 2 - 1) * 16,
-      (Math.random() * 2 - 1) * 22,
+      (Math.random() * 2 - 1) * 28,
+      (Math.random() * 2 - 1) * 20,
+      (Math.random() * 2 - 1) * 28,
     );
     this.life[i] = SHELL_LIFE;
   }
@@ -142,10 +143,7 @@ class ShellPool {
         continue;
       }
       const v = this.vel[i]!;
-      // Reduced gravity. Real 9.8 drops a case out of a 70° frustum in about
-      // three frames; this keeps the arc on screen long enough to be seen, which
-      // is the entire point of drawing it.
-      v.y -= 5.4 * dt;
+      v.y -= 7.6 * dt;
       m.position.addScaledVector(v, dt);
       const s = this.spin[i]!;
       m.rotation.x += s.x * dt;
@@ -1118,7 +1116,7 @@ export class ViewModel {
     // Airborne tilt: the gun drops a touch while falling.
     const airTilt = onGround ? 0 : 0.05;
 
-    // ── Multi-Stage Tactical Reload Animation ─────────────────────────────
+    // ── Professional AAA FPS Tactical Reload Animation ──────────────────
     let reloadDrop = 0;
     let reloadRoll = 0;
     let reloadYaw = 0;
@@ -1131,45 +1129,45 @@ export class ViewModel {
       reloadP = p;
 
       if (p < 0.22) {
-        // Stage 1: Tilt weapon into tactical workspace & eject mag
+        // Stage 1: Subtle weapon tuck & empty mag release
         const t = p / 0.22;
         const e = t * t * (3 - 2 * t);
-        reloadDrop = e * 0.08;
-        reloadRoll = e * 0.46;
-        reloadYaw = -e * 0.28;
-        reloadPitch = -e * 0.16;
-      } else if (p < 0.65) {
-        // Stage 2: Guide fresh magazine up to magwell
-        const t = (p - 0.22) / 0.43;
-        const breathe = Math.sin(t * Math.PI) * 0.015;
-        reloadDrop = 0.08 + breathe;
-        reloadRoll = 0.46 - t * 0.08;
-        reloadYaw = -0.28 + t * 0.06;
-        reloadPitch = -0.16 + t * 0.04;
+        reloadDrop = e * 0.035;
+        reloadRoll = e * 0.14;
+        reloadYaw = -e * 0.08;
+        reloadPitch = e * 0.03;
+      } else if (p < 0.68) {
+        // Stage 2: Hold stable in workspace while guiding fresh mag in
+        const t = (p - 0.22) / 0.46;
+        const subtleBreathe = Math.sin(t * Math.PI) * 0.006;
+        reloadDrop = 0.035 + subtleBreathe;
+        reloadRoll = 0.14 - t * 0.04;
+        reloadYaw = -0.08 + t * 0.02;
+        reloadPitch = 0.03;
       } else if (p < 0.78) {
-        // Stage 3: Tactical Palm Slap Lock (Sharp upward jolt!)
-        const t = (p - 0.65) / 0.13;
+        // Stage 3: Tactical Palm Slap Lock (Sharp upward tactile jolt!)
+        const t = (p - 0.68) / 0.10;
         const slap = Math.sin(t * Math.PI);
-        reloadDrop = 0.08 - slap * 0.035;
-        reloadRoll = 0.38 - slap * 0.18;
-        reloadYaw = -0.22 - slap * 0.06;
-        reloadPitch = -0.12 + slap * 0.08;
-      } else if (p < 0.90) {
-        // Stage 4: Bolt release / Charging handle rack
-        const t = (p - 0.78) / 0.12;
+        reloadDrop = 0.035 - slap * 0.025;
+        reloadRoll = 0.10 - slap * 0.06;
+        reloadYaw = -0.06;
+        reloadPitch = 0.03 + slap * 0.04;
+      } else if (p < 0.88) {
+        // Stage 4: Bolt release catch / Charging handle snap
+        const t = (p - 0.78) / 0.10;
         const boltRack = Math.sin(t * Math.PI);
-        reloadDrop = 0.08 * (1 - t);
-        reloadRoll = 0.38 * (1 - t);
-        reloadYaw = -0.22 * (1 - t) - boltRack * 0.08;
-        reloadPitch = -0.12 * (1 - t);
+        reloadDrop = 0.035 * (1 - t);
+        reloadRoll = 0.10 * (1 - t);
+        reloadYaw = -0.06 * (1 - t) - boltRack * 0.02;
+        reloadPitch = 0.03 * (1 - t);
       } else {
         // Stage 5: Settle smoothly back into high-ready aim
-        const t = (p - 0.90) / 0.10;
+        const t = (p - 0.88) / 0.12;
         const k = (1 - t) * (1 - t);
-        reloadDrop = 0.02 * k;
-        reloadRoll = 0.05 * k;
-        reloadYaw = -0.04 * k;
-        reloadPitch = -0.02 * k;
+        reloadDrop = 0.01 * k;
+        reloadRoll = 0.02 * k;
+        reloadYaw = -0.01 * k;
+        reloadPitch = 0.005 * k;
       }
     }
 
@@ -1210,25 +1208,25 @@ export class ViewModel {
       const p = reloadP;
       if (this.hasMag) {
         if (p < 0.20) {
-          // Empty magazine drops out under gravity with acceleration
+          // Empty magazine drops straight out of magwell
           const t = p / 0.20;
-          magY = -0.45 * t * t;
-          magZ = 0.08 * t * t;
-          magRoll = 0.85 * t * t;
+          magY = -0.32 * t * t;
+          magZ = 0.03 * t * t;
+          magRoll = 0.15 * t * t;
         } else if (p < 0.38) {
           // Offscreen while hand grabs fresh magazine
           magVisible = false;
-        } else if (p < 0.65) {
+        } else if (p < 0.68) {
           // Fresh magazine inserts smoothly into magwell
-          const t = (p - 0.38) / 0.27;
+          const t = (p - 0.38) / 0.30;
           const e = t * t * (3 - 2 * t);
-          magY = -0.45 * (1 - e);
-          magZ = 0.08 * (1 - e);
-          magRoll = 0.85 * (1 - e);
+          magY = -0.32 * (1 - e);
+          magZ = 0.03 * (1 - e);
+          magRoll = 0.15 * (1 - e);
         } else if (p < 0.78) {
           // Seated firmly with subtle palm compression
-          const t = (p - 0.65) / 0.13;
-          magY = -Math.sin(t * Math.PI) * 0.008;
+          const t = (p - 0.68) / 0.10;
+          magY = -Math.sin(t * Math.PI) * 0.005;
           magZ = 0;
           magRoll = 0;
         } else {
@@ -1238,12 +1236,12 @@ export class ViewModel {
         }
 
         // Bolt carrier group rack on reload
-        if (p >= 0.78 && p < 0.90) {
-          const t = (p - 0.78) / 0.12;
+        if (p >= 0.78 && p < 0.88) {
+          const t = (p - 0.78) / 0.10;
           const stroke = Math.sin(t * Math.PI);
-          actionZ = Math.max(actionZ, stroke * this.actionTravel * 1.6);
+          actionZ = Math.max(actionZ, stroke * this.actionTravel * 1.4);
           if (this.actionKind === 'bolt') {
-            actionLift = Math.max(actionLift, stroke * 0.88);
+            actionLift = Math.max(actionLift, stroke * 0.85);
           }
         }
       } else if (this.tubeShells > 0) {
