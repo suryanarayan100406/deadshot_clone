@@ -688,6 +688,36 @@ suite('every stance actually reaches the speed it advertises', () => {
   );
 });
 
+suite('sprint stamina drains and triggers cooldown', () => {
+  const floor: Box = { minX: -400, minY: -1, minZ: -400, maxX: 400, maxY: 0, maxZ: 400 };
+  const s: MoveState = {
+    pos: v3(0, 0, 0),
+    vel: v3(0, 0, 0),
+    onGround: true,
+    crouching: false,
+    height: PLAYER_HEIGHT,
+  };
+  const cmd = newInputCmd();
+  cmd.forward = 1;
+  cmd.buttons = BTN.SPRINT;
+
+  // Sprint for 5 seconds (past the 4.5s stamina limit)
+  for (let i = 0; i < 300; i++) stepMovement(s, cmd, [floor], 1, TICK_DT);
+
+  check((s.stamina ?? 0) <= 0.05, 'stamina drains completely after 5s sprint');
+  check((s.staminaCooldown ?? 0) > 0, 'stamina enters cooldown after exhaustion');
+
+  const exhaustedSpeed = Math.sqrt(s.vel.x * s.vel.x + s.vel.z * s.vel.z);
+  near(exhaustedSpeed, SPEED_WALK, 0.05, 'exhausted player drops back to SPEED_WALK');
+
+  // Release sprint and wait for cooldown to pass and recharge (5 seconds)
+  cmd.buttons = 0;
+  for (let i = 0; i < 300; i++) stepMovement(s, cmd, [floor], 1, TICK_DT);
+
+  check((s.stamina ?? 0) >= 0.98, 'stamina fully recharges after cooldown');
+  check((s.staminaCooldown ?? 0) === 0, 'cooldown clears after recovery');
+});
+
 /* ─────────────────────────────────────────────────────────────────────────────
    3. Hitscan
    ────────────────────────────────────────────────────────────────────────── */

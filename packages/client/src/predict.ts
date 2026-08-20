@@ -114,6 +114,8 @@ export class Predictor {
     this.state.onGround = false;
     this.state.crouching = false;
     this.state.height = PLAYER_HEIGHT;
+    this.state.stamina = 1.0;
+    this.state.staminaCooldown = 0;
     this.visualError.x = 0;
     this.visualError.y = 0;
     this.visualError.z = 0;

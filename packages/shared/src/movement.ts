@@ -12,6 +12,10 @@ import {
   SPEED_CROUCH,
   SPEED_SPRINT,
   SPEED_WALK,
+  STAMINA_COOLDOWN,
+  STAMINA_DRAIN_RATE,
+  STAMINA_MAX,
+  STAMINA_RECOVER_RATE,
   STEP_HEIGHT,
   TICK_DT,
 } from './constants';
@@ -63,6 +67,10 @@ export interface MoveState {
   crouching: boolean;
   /** Current body height — animates between standing and crouching. */
   height: number;
+  /** Current sprint stamina (0..1). */
+  stamina?: number;
+  /** Cooldown time remaining before stamina begins recharging. */
+  staminaCooldown?: number;
 }
 
 /** Quake-style acceleration: only ever adds speed up to `wishSpeed` along `wishDir`,
@@ -143,7 +151,32 @@ export function stepMovement(
   let wz = -cy * cmd.forward - sy * cmd.right;
 
   const wishLen = Math.sqrt(wx * wx + wz * wz);
-  let base = s.crouching ? SPEED_CROUCH : wantSprint && cmd.forward > 0 ? SPEED_SPRINT : SPEED_WALK;
+
+  // ── Stamina & Sprint Calculation ──────────────────────────────────────────
+  let curStamina = s.stamina ?? STAMINA_MAX;
+  let curCooldown = s.staminaCooldown ?? 0;
+
+  let isSprinting = false;
+  if (curCooldown > 0) {
+    curCooldown = Math.max(0, curCooldown - dt);
+  } else if (wantSprint && cmd.forward > 0 && !s.crouching && curStamina > 0) {
+    isSprinting = true;
+    curStamina = Math.max(0, curStamina - STAMINA_DRAIN_RATE * dt);
+    if (curStamina <= 0) {
+      curStamina = 0;
+      curCooldown = STAMINA_COOLDOWN;
+      isSprinting = false;
+    }
+  } else if (!wantSprint || cmd.forward <= 0 || s.crouching) {
+    if (curStamina < STAMINA_MAX) {
+      curStamina = Math.min(STAMINA_MAX, curStamina + STAMINA_RECOVER_RATE * dt);
+    }
+  }
+
+  s.stamina = curStamina;
+  s.staminaCooldown = curCooldown;
+
+  let base = s.crouching ? SPEED_CROUCH : isSprinting ? SPEED_SPRINT : SPEED_WALK;
   base *= speedMult;
   const wishSpeed = wishLen > 1e-5 ? base * Math.min(1, wishLen) : 0;
   if (wishLen > 1e-5) {

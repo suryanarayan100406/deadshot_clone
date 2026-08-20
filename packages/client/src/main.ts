@@ -1642,6 +1642,7 @@ class Game {
     this.hud.setCrosshair(this.spreadFraction(), ads, this.onTarget && this.alive);
     this.hud.setScope(w.scoped && ads > 0.82);
     this.hud.setHealth(this.health);
+    this.hud.setStamina(this.predictor.state.stamina ?? 1.0, (this.predictor.state.staminaCooldown ?? 0) > 0);
     this.hud.setAmmo(w.id, this.displayMag(), this.serverReserve, reloading);
     this.hud.setStats(this.fps, this.net.rtt);
 

@@ -40,9 +40,14 @@ export const MAX_HEALTH = 100;
 export const GRAVITY = 22.0;
 export const JUMP_SPEED = 7.4;
 
-export const SPEED_WALK = 6.2;
-export const SPEED_SPRINT = 8.8;
-export const SPEED_CROUCH = 3.0;
+export const SPEED_WALK = 4.8;
+export const SPEED_SPRINT = 7.6;
+export const SPEED_CROUCH = 2.4;
+
+export const STAMINA_MAX = 1.0;
+export const STAMINA_DRAIN_RATE = 1.0 / 4.5;
+export const STAMINA_RECOVER_RATE = 1.0 / 3.0;
+export const STAMINA_COOLDOWN = 1.8;
 
 /**
  * Ground acceleration, m/s².

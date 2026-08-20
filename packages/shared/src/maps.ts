@@ -705,6 +705,67 @@ function trimWall(
   }
 }
 
+/** ISO Shipping Container providing solid tactical cover */
+function shippingContainer(
+  b: Brush[],
+  p: Prop[],
+  x: number,
+  y: number,
+  z: number,
+  axis: 'x' | 'z',
+  mat: MatKey = 'accent',
+): void {
+  const sx = axis === 'x' ? 6.0 : 2.4;
+  const sz = axis === 'x' ? 2.4 : 6.0;
+  const sy = 2.6;
+  br(b, x, y, z, sx, sy, sz, mat);
+  if (axis === 'z') {
+    pr(p, 'cyl', x - 0.4, y + 0.3, z + sz * 0.5 + 0.02, 0.035, 2.0, 'metalDark', 'y', true);
+    pr(p, 'cyl', x + 0.4, y + 0.3, z + sz * 0.5 + 0.02, 0.035, 2.0, 'metalDark', 'y', true);
+  } else {
+    pr(p, 'cyl', x + sx * 0.5 + 0.02, y + 0.3, z - 0.4, 0.035, 2.0, 'metalDark', 'y', true);
+    pr(p, 'cyl', x + sx * 0.5 + 0.02, y + 0.3, z + 0.4, 0.035, 2.0, 'metalDark', 'y', true);
+  }
+}
+
+/** Coastal Pine / Palm Tree with solid trunk and lush foliage canopy */
+function pineTree(p: Prop[], x: number, y: number, z: number, height = 7.5): void {
+  // Solid trunk
+  pr(p, 'cyl', x, y, z, 0.22, height * 0.45, 'wood', 'y', true);
+  // Tiered foliage canopies (overhead >= 2.6m)
+  pr(p, 'dome', x, y + height * 0.45, z, 1.45, height * 0.35, 'paint');
+  pr(p, 'dome', x, y + height * 0.68, z, 1.1, height * 0.3, 'paint');
+  pr(p, 'dome', x, y + height * 0.88, z, 0.65, height * 0.22, 'paint');
+}
+
+/** Military Transport Cargo Truck */
+function militaryTruck(b: Brush[], p: Prop[], x: number, y: number, z: number, axis: 'x' | 'z'): void {
+  if (axis === 'z') {
+    // Cab & Engine Hood
+    br(b, x, y, z - 1.8, 2.4, 2.2, 2.2, 'metalDark');
+    br(b, x, y, z - 3.4, 2.2, 1.3, 1.4, 'metalDark');
+    // Wooden Cargo Bed
+    br(b, x, y, z + 1.6, 2.5, 2.4, 4.4, 'wood');
+    // Wheels
+    roundColumn(p, x - 1.25, y, z - 2.6, 0.45, 0.4, 'metalDark', 'metalDark');
+    roundColumn(p, x + 1.25, y, z - 2.6, 0.45, 0.4, 'metalDark', 'metalDark');
+    roundColumn(p, x - 1.25, y, z + 1.2, 0.45, 0.4, 'metalDark', 'metalDark');
+    roundColumn(p, x + 1.25, y, z + 1.2, 0.45, 0.4, 'metalDark', 'metalDark');
+    roundColumn(p, x - 1.25, y, z + 2.8, 0.45, 0.4, 'metalDark', 'metalDark');
+    roundColumn(p, x + 1.25, y, z + 2.8, 0.45, 0.4, 'metalDark', 'metalDark');
+  } else {
+    br(b, x - 1.8, y, z, 2.2, 2.2, 2.4, 'metalDark');
+    br(b, x - 3.4, y, z, 1.4, 1.3, 2.2, 'metalDark');
+    br(b, x + 1.6, y, z, 4.4, 2.4, 2.5, 'wood');
+    roundColumn(p, x - 2.6, y, z - 1.25, 0.45, 0.4, 'metalDark', 'metalDark');
+    roundColumn(p, x - 2.6, y, z + 1.25, 0.45, 0.4, 'metalDark', 'metalDark');
+    roundColumn(p, x + 1.2, y, z - 1.25, 0.45, 0.4, 'metalDark', 'metalDark');
+    roundColumn(p, x + 1.2, y, z + 1.25, 0.45, 0.4, 'metalDark', 'metalDark');
+    roundColumn(p, x + 2.8, y, z - 1.25, 0.45, 0.4, 'metalDark', 'metalDark');
+    roundColumn(p, x + 2.8, y, z + 1.25, 0.45, 0.4, 'metalDark', 'metalDark');
+  }
+}
+
 // ── Prop builders ────────────────────────────────────────────────────────────
 
 /** Push a prop. `y` is the bottom of its bounding box, as with `br`. */
@@ -979,199 +1040,208 @@ function truss(
 function buildDustworks(): GameMap {
   const b: Brush[] = [];
   const p: Prop[] = [];
-  const HALF = 38;
+  const HALF = 48;
 
-  // Floor, sunk so its top face sits exactly at y = 0.
-  br(b, 0, -1, 0, HALF * 2, 1, HALF * 2, 'sand');
+  // Concrete Fortress ground floor
+  br(b, 0, -1, 0, HALF * 2, 1, HALF * 2, 'concrete');
 
-  // Perimeter wall, with a coping course and piers so it reads as built masonry
-  // rather than the inside of a box.
-  const PW = 8;
+  // Perimeter fortress walls & coastal overlook
+  const PW = 7.0;
   for (const s of [-1, 1] as const) {
-    wall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'sandDark');
-    wall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'sandDark');
-    trimWall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'sand');
-    trimWall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'sand');
+    wall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'concreteDark');
+    wall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'concreteDark');
+    trimWall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'concrete');
+    trimWall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'concrete');
   }
 
-  // ── Centre: raised platform, reachable from all four sides ────────────────
-  const PLAT = 16;
-  const PH = 1.8;
-  const PSTEP = 6;
-  br(b, 0, 0, 0, PLAT, PH, PLAT, 'concrete');
-  // Foot of each run set back by steps × depth, ascending toward the platform.
-  const foot = PLAT / 2 + PSTEP * 0.45;
-  stairs(b, 0, 0, foot, 'z-', PSTEP, PH / PSTEP, 0.45, 5, 'concreteDark');
-  stairs(b, 0, 0, -foot, 'z+', PSTEP, PH / PSTEP, 0.45, 5, 'concreteDark');
-  stairs(b, foot, 0, 0, 'x-', PSTEP, PH / PSTEP, 0.45, 5, 'concreteDark');
-  stairs(b, -foot, 0, 0, 'x+', PSTEP, PH / PSTEP, 0.45, 5, 'concreteDark');
-
-  // Cover on the platform: a broken ring so it can be fought over.
-  br(b, 0, PH, 0, 4, 3, 4, 'concreteDark');
-  for (const [sx, sz] of CORNERS) {
-    br(b, 4.6 * sx, PH, 4.6 * sz, 2.2, 1.1, 2.2, 'rust');
-    barrel(p, 4.6 * sx, PH, 7.1 * sz, 'paint');
+  // Pine trees along perimeter
+  for (let i = -40; i <= 40; i += 16) {
+    pineTree(p, i, 0, -44, 8.5);
+    pineTree(p, i, 3.2, 44, 8.5);
+    pineTree(p, -44, 0, i, 8.5);
+    pineTree(p, 44, 0, i, 8.5);
   }
 
-  // The water tower over the middle. Four solid legs and a tank high enough to be
-  // pure silhouette — it gives the contested ground a landmark visible from every
-  // spawn, which an arena of equal-height boxes never has.
-  const LEG = 6.4;
-  const TANK_Y = PH + 8;
-  for (const [sx, sz] of CORNERS) {
-    pr(p, 'cyl', LEG * sx, PH, LEG * sz, 0.24, 8, 'metalDark', 'y', true);
-  }
-  for (const cy of [5.6, 8.4]) {
-    for (const s of [-1, 1] as const) {
-      pipe(p, 'x', -LEG, LEG, cy, LEG * s, 0.075, 'metalDark');
-      pipe(p, 'z', -LEG, LEG, cy, LEG * s, 0.075, 'metalDark');
-    }
-  }
-  pr(p, 'cyl', 0, TANK_Y, 0, 3.6, 4.2, 'metal');
-  pr(p, 'dome', 0, TANK_Y + 4.2, 0, 3.6, 1.5, 'metal');
-  ringAt(p, 0, TANK_Y + 1.1, 0, 3.66, 0.1, 'metalDark', 'y');
-  ringAt(p, 0, TANK_Y + 3.2, 0, 3.66, 0.1, 'metalDark', 'y');
-  pr(p, 'cyl', 0, TANK_Y + 5.7, 0, 0.09, 2.6, 'metalDark');
-  ladder(p, LEG, PH, LEG, TANK_Y, 'x');
+  // ── 1. West Wing: 2-Story Operations Headquarters (Left Complex) ───────────
+  const WX = -24;
+  const WZ = 0;
+  const WW = 20;
+  const WD = 28;
+  const fl1H = 3.6;
+  const fl2H = 3.6;
+  const fl2Y = 4.0;
+  const roofY = 7.6;
+  const roofWalkY = 8.0;
 
-  // ── Grand Multi-Story Walkable Tactical Compounds ───────────────────────
-  const C = 23;
-  const BW = 14;
-  for (const [sx, sz] of CORNERS) {
-    multiStoryBuilding(
-      b,
-      p,
-      C * sx,
-      C * sz,
-      BW,
-      BW,
-      3.6,
-      3.6,
-      'concrete',
-      'concreteDark',
-      sz > 0 ? 'north' : 'south',
-    );
-  }
-
-  // ── Mid-field cover: four L-walls forming rotational half-cover ────────────
-  for (const [sx, sz] of CORNERS) {
-    wall(b, 'x', 13.5 * sz, 3 * sx, 12 * sx, 0, 2.6, 0.6, 'sandDark');
-    wall(b, 'z', 13.5 * sx, 3 * sz, 12 * sz, 0, 2.6, 0.6, 'sandDark');
-    trimWall(b, 'x', 13.5 * sz, Math.min(3 * sx, 12 * sx), Math.max(3 * sx, 12 * sx), 2.6, 0.6, 'sand', 20);
-  }
-
-  // ── Colonnades down each flank ────────────────────────────────────────────
-  // The old flank lanes were two walls with a gap between them, which is exactly
-  // what "blocks with gaps" describes. A row of round columns under a roof slab
-  // gives the same lane, the same sightlines through it, and reads as architecture.
-  const COL = 32;
-  const COL_H = 3.8;
-  for (const s of [-1, 1] as const) {
-    for (let i = -3; i <= 3; i++) {
-      roundColumn(p, i * 4, 0, COL * s, 0.62, COL_H, 'sandDark', 'sand');
-      roundColumn(p, COL * s, 0, i * 4, 0.62, COL_H, 'sandDark', 'sand');
-    }
-    br(b, 0, COL_H, COL * s, 26.5, 0.5, 3.6, 'sandDark');
-    br(b, COL * s, COL_H, 0, 3.6, 0.5, 26.5, 'sandDark');
-    for (const t of [-8, 0, 8]) {
-      lamp(p, t, COL_H, COL * s, 0.4);
-      lamp(p, COL * s, COL_H, t, 0.4);
-    }
-  }
-
-  // ── Fuel bunds ────────────────────────────────────────────────────────────
-  // One per quadrant, out in the mid-field band rather than on the diagonal: the
-  // blockhouses occupy 16–30 m on *both* axes, so the diagonal at 19 m is inside
-  // one of them, and a bund built there would be a containment wall in somebody's
-  // living room.
-  for (const [sx, sz] of CORNERS) {
-    const bx = 22 * sx;
-    const bz = 9 * sz;
-    // A containment wall you can crouch behind, and three columns inside it.
-    wall(b, 'x', bz - 3.4 * sz, bx - 3.6, bx + 3.6, 0, 1.1, 0.5, 'concreteDark');
-    wall(b, 'z', bx - 3.4 * sx, bz - 3.6, bz + 3.6, 0, 1.1, 0.5, 'concreteDark');
-    vessel(p, bx - 1.6 * sx, 0, bz - 1.6 * sz, 1.02, 8.4, 'metal');
-    vessel(p, bx + 1.7 * sx, 0, bz + 0.4 * sz, 0.8, 6.2, 'rust');
-    vessel(p, bx + 0.2 * sx, 0, bz + 2.3 * sz, 0.65, 4.8, 'metal');
-    ladder(p, bx - 1.6 * sx + 1.0 * sx, 0, bz - 1.6 * sz, 8.4, 'x');
-    // The line out of the bund. It stops short of the colonnade and turns down into
-    // the slab rather than crossing its roof: that roof is standable, and a pipe at
-    // 5.4 m would sit across the chest of anybody up there while stopping nothing —
-    // the exact failure the placement rules exist to catch. The riser is solid, at a
-    // 23 cm collider nobody will ever notice and every player can lean on.
-    const px = 30 * sx;
-    pipe(p, 'x', Math.min(bx, px), Math.max(bx, px), 5.4, bz, 0.16, 'metal');
-    elbow(p, bx, 5.4, bz, 0.2, 'metal');
-    elbow(p, px, 5.4, bz, 0.2, 'metal');
-    pr(p, 'cyl', px, 0, bz, 0.16, 5.24, 'metal', 'y', true);
-    ringAt(p, 26 * sx, 5.4, bz, 0.24, 0.06, 'paint', 'x');
-    bollard(p, bx + 4.6 * sx, 0, bz - 4.6 * sz);
-    bollard(p, bx + 5.8 * sx, 0, bz - 5.8 * sz);
-  }
-
-  // ── Scattered crates for micro-cover and jump routes ──────────────────────
-  const crates: Array<[number, number, number, MatKey]> = [
-    [-11, -27, 1.3, 'wood'],
-    [11, -27, 1.3, 'wood'],
-    [-11, 27, 1.3, 'wood'],
-    [11, 27, 1.3, 'wood'],
-    [-27, -11, 1.3, 'wood'],
-    [27, -11, 1.3, 'wood'],
-    [-27, 11, 1.3, 'wood'],
-    [27, 11, 1.3, 'wood'],
-    [0, -25, 1.7, 'rust'],
-    [0, 25, 1.7, 'rust'],
-    [-25, 0, 1.7, 'rust'],
-    [25, 0, 1.7, 'rust'],
+  const wDoorMain: Door = { at: WZ, width: 3.4, height: 2.6 };
+  const wDoorSide: Door = { at: WX, width: 2.4, height: 2.5 };
+  const winW: WindowSpec[] = [
+    { at: WZ - 8, width: 2.4, sillY: 1.0, height: 1.4 },
+    { at: WZ + 8, width: 2.4, sillY: 1.0, height: 1.4 },
   ];
-  for (const [x, z, s, m] of crates) {
-    br(b, x, 0, z, s, s, s, m);
-    // a smaller crate beside each, forming a two-step climb
-    br(b, x + s * 0.9, 0, z, s * 0.62, s * 0.62, s * 0.62, m);
-    barrel(p, x - s * 1.1, 0, z + s * 0.6, 'rust');
-  }
+  const winFront: WindowSpec[] = [
+    { at: WX - 4, width: 2.2, sillY: 1.0, height: 1.4 },
+    { at: WX + 4, width: 2.2, sillY: 1.0, height: 1.4 },
+  ];
 
-  // Lamp posts flanking the four approaches, set off the diagonal so none of them
-  // stands in the middle of a staircase.
-  for (const [sx, sz] of CORNERS) lampPost(p, 11 * sx, 0, 11 * sz, 4.3, -0.9 * sx);
+  // Ground Floor exterior
+  wallWithOpenings(b, 'z', WX + WW / 2, WZ - WD / 2, WZ + WD / 2, 0, fl1H, 0.5, 'concrete', wDoorMain, winW);
+  wallWithOpenings(b, 'z', WX - WW / 2, WZ - WD / 2, WZ + WD / 2, 0, fl1H, 0.5, 'concrete', undefined, winW);
+  wallWithOpenings(b, 'x', WZ - WD / 2, WX - WW / 2, WX + WW / 2, 0, fl1H, 0.5, 'concrete', wDoorSide, winFront);
+  wallWithOpenings(b, 'x', WZ + WD / 2, WX - WW / 2, WX + WW / 2, 0, fl1H, 0.5, 'concrete', wDoorSide, winFront);
 
-  // ── Skyline beyond the wall ───────────────────────────────────────────────
-  // Only the tops of these are ever visible, which is the point: an 8 m wall with
-  // nothing behind it tells the player the world stops there.
-  tank(p, 52, 0, 9, 9, 17, 'metal');
-  tank(p, 49, 0, -21, 7, 14, 'sandDark');
-  tank(p, -50, 0, 16, 8, 15, 'metal');
-  pr(p, 'cyl', -47, 0, -14, 2.4, 34, 'concrete');
-  pr(p, 'cyl', -47, 34, -14, 2.4, 1.2, 'paint');
-  pr(p, 'cyl', 14, 0, -50, 1.9, 28, 'concrete');
-  pr(p, 'cyl', -18, 0, 51, 2.2, 30, 'concreteDark');
-  for (const [x, z, w, d, h] of [
-    [-56, -44, 16, 14, 13],
-    [58, 34, 20, 16, 11],
-    [30, 56, 14, 12, 15],
-    [-34, -58, 18, 12, 12],
-  ] as const) {
-    br(b, x, -1, z, w, h, d, 'sandDark');
-    br(b, x, h - 1, z, w + 1, 0.6, d + 1, 'sand');
-  }
+  // Interior partition wall
+  wall(b, 'x', WZ, WX - WW / 2 + 1, WX + WW / 2 - 1, 0, fl1H, 0.4, 'concreteDark', { at: WX, width: 2.4, height: 2.5 });
+
+  // Ground Floor interior cover
+  br(b, WX - 4, 0, WZ - 6, 3.2, 1.0, 2.0, 'wood');
+  br(b, WX - 4, 0, WZ + 6, 2.2, 1.8, 2.2, 'rust');
+  br(b, WX + 4, 0, WZ + 6, 2.4, 1.2, 1.8, 'wood');
+  lamp(p, WX, fl1H - 0.05, WZ - 6, 0.15);
+  lamp(p, WX, fl1H - 0.05, WZ + 6, 0.15);
+
+  // Interior staircase to 2nd Floor
+  stairs(b, WX - 5, 0, WZ - 10, 'z+', 12, 0.30, 0.45, 2.4, 'concreteDark');
+
+  // 2nd Floor Slab
+  br(b, WX, fl1H, WZ, WW + 0.5, 0.4, WD + 0.5, 'concreteDark');
+
+  // 2nd Floor Exterior Catwalk Terrace overlooking courtyard
+  const catX = WX + WW / 2 + 2.4;
+  br(b, catX - 1.2, fl1H, WZ, 2.4, 0.4, 16.0, 'concreteDark');
+  guard(b, p, 'z', catX, WZ - 8, WZ + 8, fl2Y, 'metal');
+
+  // ── Grand Central Staircase from Courtyard to 2nd Floor Catwalk ──────────
+  stairs(b, catX + 5.4, 0, WZ, 'x-', 12, 0.30, 0.45, 5.0, 'concreteDark');
+  br(b, catX + 2.7, 0, WZ - 2.7, 5.4, 2.4, 0.4, 'concreteDark');
+  br(b, catX + 2.7, 0, WZ + 2.7, 5.4, 2.4, 0.4, 'concreteDark');
+
+  // 2nd Floor exterior walls & windows
+  const winCatDoor: Door = { at: WZ, width: 2.8, height: 2.5 };
+  wallWithOpenings(b, 'z', WX + WW / 2, WZ - WD / 2, WZ + WD / 2, fl2Y, fl2H, 0.5, 'concrete', winCatDoor, winW);
+  wallWithOpenings(b, 'z', WX - WW / 2, WZ - WD / 2, WZ + WD / 2, fl2Y, fl2H, 0.5, 'concrete', undefined, winW);
+  wallWithOpenings(b, 'x', WZ - WD / 2, WX - WW / 2, WX + WW / 2, fl2Y, fl2H, 0.5, 'concrete', undefined, winFront);
+  wallWithOpenings(b, 'x', WZ + WD / 2, WX - WW / 2, WX + WW / 2, fl2Y, fl2H, 0.5, 'concrete', undefined, winFront);
+
+  // 2nd Floor Staircase to Roof
+  stairs(b, WX + 5, fl2Y, WZ + 10, 'z-', 12, 0.30, 0.45, 2.4, 'concreteDark');
+
+  // Roof Slab
+  br(b, WX, roofY, WZ, WW + 1.0, 0.4, WD + 1.0, 'concreteDark');
+  wall(b, 'z', WX + WW / 2 + 0.5, WZ - WD / 2 - 0.5, WZ + WD / 2 + 0.5, roofWalkY, 0.95, 0.5, 'concrete');
+  wall(b, 'z', WX - WW / 2 - 0.5, WZ - WD / 2 - 0.5, WZ + WD / 2 + 0.5, roofWalkY, 0.95, 0.5, 'concrete');
+  wall(b, 'x', WZ - WD / 2 - 0.5, WX - WW / 2 - 0.5, WX + WW / 2 + 0.5, roofWalkY, 0.95, 0.5, 'concrete');
+  wall(b, 'x', WZ + WD / 2 - 0.5, WX - WW / 2 - 0.5, WX + WW / 2 + 0.5, roofWalkY, 0.95, 0.5, 'concrete');
+
+  // Rooftop industrial skylight monitor vents
+  br(b, WX - 3, roofWalkY, WZ - 6, 6.0, 1.4, 5.0, 'metalDark');
+  br(b, WX - 3, roofWalkY, WZ + 6, 6.0, 1.4, 5.0, 'metalDark');
+  pr(p, 'cyl', WX + 6, roofWalkY, WZ - 8, 0.14, 7.0, 'metalDark', 'y', true);
+  pr(p, 'sphere', WX + 6, roofWalkY + 7.0, WZ - 8, 0.18, 0, 'light');
+
+  // ── 2. East Wing: Industrial Logistics Hangar (Right Complex) ─────────────
+  const EX = 24;
+  const EZ = 0;
+  const EW = 20;
+  const ED = 26;
+  const EH = 6.2;
+
+  const hangarBayDoor: Door = { at: EZ, width: 6.4, height: 4.8 };
+  const hangarBackDoor: Door = { at: EX, width: 3.0, height: 3.2 };
+  wall(b, 'z', EX - EW / 2, EZ - ED / 2, EZ + ED / 2, 0, EH, 0.5, 'concrete', hangarBayDoor);
+  wall(b, 'z', EX + EW / 2, EZ - ED / 2, EZ + ED / 2, 0, EH, 0.5, 'concrete');
+  wall(b, 'x', EZ - ED / 2, EX - EW / 2, EX + EW / 2, 0, EH, 0.5, 'concrete', hangarBackDoor);
+  wall(b, 'x', EZ + ED / 2, EX - EW / 2, EX + EW / 2, 0, EH, 0.5, 'concrete', hangarBackDoor);
+
+  // Hangar roof
+  br(b, EX, EH, EZ, EW + 1.0, 0.4, ED + 1.0, 'concreteDark');
+  br(b, EX, EH + 0.4, EZ - 5, 8.0, 1.2, 4.4, 'metalDark');
+  br(b, EX, EH + 0.4, EZ + 5, 8.0, 1.2, 4.4, 'metalDark');
+
+  // Hangar interior mezzanine catwalk
+  br(b, EX + EW / 2 - 2.0, 3.2, EZ, 4.0, 0.4, ED - 2, 'concreteDark');
+  guard(b, p, 'z', EX + EW / 2 - 4.0, EZ - ED / 2 + 2, EZ + ED / 2 - 2, 3.6, 'metal');
+  stairs(b, EX + EW / 2 - 2.0, 0, EZ - 8, 'z+', 11, 0.29, 0.45, 2.0, 'concreteDark');
+
+  // Hangar interior crates & barrels
+  br(b, EX - 2, 0, EZ - 6, 2.4, 1.2, 3.6, 'wood');
+  br(b, EX - 2, 0, EZ + 6, 2.4, 2.2, 2.4, 'rust');
+  barrel(p, EX + 2, 0, EZ - 6, 'paint');
+  barrel(p, EX + 2, 0, EZ - 5, 'rust');
+  lamp(p, EX, EH - 0.1, EZ, 0.45);
+
+  // ── 3. Blue Shipping Containers Depot ─────────────────────────────────────
+  shippingContainer(b, p, 11, 0, -10, 'z', 'accent');
+  shippingContainer(b, p, 11, 0, -3.6, 'z', 'accent');
+  shippingContainer(b, p, 11, 2.6, -3.6, 'z', 'accent');
+  shippingContainer(b, p, 11, 0, 10, 'z', 'accent');
+  shippingContainer(b, p, 11, 0, 16.4, 'z', 'accent');
+  shippingContainer(b, p, 15, 0, 3.6, 'x', 'accent');
+  shippingContainer(b, p, 6, 0, 12, 'x', 'metalDark');
+
+  // ── 4. Central Staging Courtyard ──────────────────────────────────────────
+  militaryTruck(b, p, -1.0, 0, -12.0, 'z');
+
+  br(b, 0, 0, 0, 2.6, 1.2, 2.6, 'wood');
+  br(b, 2.2, 0, 0, 1.6, 1.6, 1.6, 'rust');
+  barrel(p, -2.2, 0, 0, 'rust');
+  barrel(p, -2.2, 0, 0.8, 'paint');
+
+  wall(b, 'x', -4, -6, 2, 0, 1.1, 0.4, 'concreteDark');
+  wall(b, 'x', 6, -2, 6, 0, 1.1, 0.4, 'concreteDark');
+
+  // ── 5. Upper Back Heliport & Solar Generator Terrace (North) ──────────────
+  const HZ = 33;
+  const HY = 3.2;
+  const HW = 44;
+  const HD = 20;
+
+  br(b, 0, 0, HZ, HW, HY, HD, 'concrete');
+
+  // Access stairs on left and right
+  stairs(b, -16, 0, HZ - HD / 2, 'z-', 11, HY / 11, 0.45, 4.0, 'concreteDark');
+  stairs(b, 16, 0, HZ - HD / 2, 'z-', 11, HY / 11, 0.45, 4.0, 'concreteDark');
+
+  // Helipad ring marking
+  ringAt(p, 0, HY, HZ, 6.5, 0.25, 'accent', 'y');
+
+  // Electrical Generator Substation
+  vessel(p, -14, HY, HZ + 4, 1.1, 4.2, 'metal');
+  vessel(p, -11, HY, HZ + 4, 1.1, 4.2, 'metal');
+  vessel(p, -8, HY, HZ + 4, 0.9, 3.4, 'rust');
+
+  // Solar panel arrays
+  br(b, 10, HY, HZ + 4, 6.0, 1.6, 3.0, 'metalDark');
+  br(b, 17, HY, HZ + 4, 6.0, 1.6, 3.0, 'metalDark');
+
+  // Perimeter guardrail on terrace
+  guard(b, p, 'x', HZ - HD / 2, -14, 14, HY, 'metal');
+  guard(b, p, 'z', -HW / 2, HZ - HD / 2, HZ + HD / 2, HY, 'metal');
+  guard(b, p, 'z', HW / 2, HZ - HD / 2, HZ + HD / 2, HY, 'metal');
+
+  // ── 6. Front Security Checkpoint Guardhouse (South) ───────────────────────
+  const GX = 0;
+  const GZ = -32;
+  building(b, GX, GZ, 7.0, 5.6, 3.2, 'concrete', 'concreteDark', { north: true, south: true });
+  br(b, GX + 5.0, 0, GZ, 0.4, 1.0, 6.0, 'accent');
+  lampPost(p, GX - 6, 0, GZ, 4.8, 1);
+  lampPost(p, GX + 6, 0, GZ, 4.8, -1);
 
   // ── Spawns ────────────────────────────────────────────────────────────────
-  // Three per quadrant, rotated four ways: one inside each blockhouse, one in the
-  // service lane behind each colonnade, and one in the outer corner. Hand-placed
-  // rather than swept round a circle, because a circle of this radius cuts through
-  // the blockhouse walls and the colonnades on the way past.
-  const spawns: Spawn[] = [];
-  for (const [sx, sz] of CORNERS) {
-    for (const [ax, az] of [
-      [C, C],
-      [33.5, 8],
-      [8, 33.5],
-    ] as const) {
-      const x = ax * sx;
-      const z = az * sz;
-      spawns.push({ x, y: 0.05, z, yaw: faceCentre(x, z) });
-    }
-  }
+  const spawns: Spawn[] = [
+    { x: -24, y: 0.05, z: -8, yaw: faceCentre(-24, -8) },
+    { x: -24, y: 0.05, z: 8, yaw: faceCentre(-24, 8) },
+    { x: 24, y: 0.05, z: -8, yaw: faceCentre(24, -8) },
+    { x: 24, y: 0.05, z: 8, yaw: faceCentre(24, 8) },
+    { x: -8, y: 0.05, z: -16, yaw: faceCentre(-8, -16) },
+    { x: 4, y: 0.05, z: 16, yaw: faceCentre(4, 16) },
+    { x: 6, y: 0.05, z: -10, yaw: faceCentre(6, -10) },
+    { x: 6, y: 0.05, z: 4, yaw: faceCentre(6, 4) },
+    { x: 0, y: 3.25, z: 33, yaw: faceCentre(0, 33) },
+    { x: -16, y: 3.25, z: 33, yaw: faceCentre(-16, 33) },
+    { x: 16, y: 3.25, z: 33, yaw: faceCentre(16, 33) },
+    { x: 0, y: 0.05, z: -26, yaw: faceCentre(0, -26) },
+  ];
 
   return {
     id: 0,
@@ -1181,15 +1251,15 @@ function buildDustworks(): GameMap {
     brushes: b,
     props: p,
     spawns,
-    sky: 0x8ab4d8,
-    fog: 0xc2d2de,
-    fogNear: 46,
-    fogFar: 205,
-    sun: { x: -0.45, y: 0.82, z: 0.36 },
-    sunColor: 0xfff2dc,
-    ambientColor: 0xbcd4ea,
-    ambientGround: 0xa08a68,
-    ambientIntensity: 0.85,
+    sky: 0x6e9ec8,
+    fog: 0x9ec0de,
+    fogNear: 50,
+    fogFar: 140,
+    sun: { x: -0.6, y: 0.9, z: -0.5 },
+    sunColor: 0xfff6e8,
+    ambientColor: 0xdae8f5,
+    ambientGround: 0xb09c84,
+    ambientIntensity: 0.9,
   };
 }
 

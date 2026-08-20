@@ -160,6 +160,9 @@ export class Hud {
   private healthEl = el('health');
   private healthFill = el('health-fill');
   private healthNum = el('health-num');
+  private staminaEl = el('stamina');
+  private staminaFill = el('stamina-fill');
+  private staminaLabel = el('stamina-label');
   private ammoEl = el('ammo');
   private ammoMag = el('ammo-mag');
   private ammoReserve = el('ammo-reserve');
@@ -210,6 +213,8 @@ export class Hud {
   private cVignette = -1;
   private cDeathCount = '';
   private cLoadout: number[] = [];
+  private cStamina = -1;
+  private cStaminaCooldown = false;
 
   private teamMode = false;
   private selfId = -1;
@@ -491,6 +496,22 @@ export class Hud {
       this.healthEl.classList.remove('warn', 'crit');
       if (cls) this.healthEl.classList.add(cls);
       this.cHealthClass = cls;
+    }
+  }
+
+  setStamina(stamina: number, cooldown: boolean): void {
+    const s = Math.max(0, Math.min(1, stamina));
+    if (Math.abs(s - this.cStamina) > 0.008 || cooldown !== this.cStaminaCooldown) {
+      this.cStamina = s;
+      this.cStaminaCooldown = cooldown;
+      this.staminaFill.style.width = `${(s * 100).toFixed(1)}%`;
+      if (cooldown) {
+        this.staminaEl.classList.add('exhausted');
+        this.staminaLabel.textContent = 'EXHAUSTED';
+      } else {
+        this.staminaEl.classList.remove('exhausted');
+        this.staminaLabel.textContent = 'SPRINT';
+      }
     }
   }
 
