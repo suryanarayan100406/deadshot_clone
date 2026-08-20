@@ -34,18 +34,18 @@
         <svg class="scope-svg" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
           <defs>
             <mask id="scope-lens-mask">
-              <rect width="1000" height="1000" fill="white" />
-              <circle cx="500" cy="500" r="420" fill="black" />
+              <rect x="-800" y="-300" width="2600" height="1600" fill="white" />
+              <circle cx="500" cy="500" r="475" fill="black" />
             </mask>
             <radialGradient id="vignette-grad" cx="50%" cy="50%" r="50%">
-              <stop offset="76%" stop-color="#020406" stop-opacity="0.97" />
-              <stop offset="88%" stop-color="#04070a" stop-opacity="0.99" />
+              <stop offset="72%" stop-color="#020406" stop-opacity="0.97" />
+              <stop offset="86%" stop-color="#04070a" stop-opacity="0.99" />
               <stop offset="100%" stop-color="#010204" stop-opacity="1" />
             </radialGradient>
             <radialGradient id="lens-edge-glow" cx="50%" cy="50%" r="50%">
-              <stop offset="93%" stop-color="transparent" />
-              <stop offset="98%" stop-color="#00f0b4" stop-opacity="0.28" />
-              <stop offset="100%" stop-color="#00e1ff" stop-opacity="0.45" />
+              <stop offset="94%" stop-color="transparent" />
+              <stop offset="98%" stop-color="#00f0b4" stop-opacity="0.30" />
+              <stop offset="100%" stop-color="#00e1ff" stop-opacity="0.50" />
             </radialGradient>
             <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
               <feGaussianBlur stdDeviation="3.0" result="blur" />
@@ -56,21 +56,21 @@
             </filter>
           </defs>
 
-          <!-- Outer Scope Body / Dark Peripheral Mask -->
-          <rect width="1000" height="1000" fill="url(#vignette-grad)" mask="url(#scope-lens-mask)" />
+          <!-- Outer Scope Body / Dark Peripheral Mask covering entire widescreen -->
+          <rect x="-800" y="-300" width="2600" height="1600" fill="url(#vignette-grad)" mask="url(#scope-lens-mask)" />
 
           <!-- Scope Bezel Metallic Rings -->
-          <circle cx="500" cy="500" r="424" fill="none" stroke="#12161c" stroke-width="8" />
-          <circle cx="500" cy="500" r="421" fill="none" stroke="#2a3340" stroke-width="2.5" />
-          <circle cx="500" cy="500" r="419" fill="url(#lens-edge-glow)" />
+          <circle cx="500" cy="500" r="478" fill="none" stroke="#12161c" stroke-width="7" />
+          <circle cx="500" cy="500" r="475" fill="none" stroke="#2a3340" stroke-width="2.5" />
+          <circle cx="500" cy="500" r="473" fill="url(#lens-edge-glow)" />
 
           <!-- Scope Reticle - Mil-Spec Precision Etched Glass -->
           <g stroke="#080c12" stroke-linecap="square">
             <!-- Heavy Outer Posts -->
-            <line x1="500" y1="80" x2="500" y2="280" stroke-width="4.5" />
-            <line x1="500" y1="720" x2="500" y2="920" stroke-width="4.5" />
-            <line x1="80" y1="500" x2="280" y2="500" stroke-width="4.5" />
-            <line x1="720" y1="500" x2="920" y2="500" stroke-width="4.5" />
+            <line x1="500" y1="28" x2="500" y2="280" stroke-width="4.5" />
+            <line x1="500" y1="720" x2="500" y2="972" stroke-width="4.5" />
+            <line x1="28" y1="500" x2="280" y2="500" stroke-width="4.5" />
+            <line x1="720" y1="500" x2="972" y2="500" stroke-width="4.5" />
 
             <!-- Fine Main Crosshairs -->
             <line x1="500" y1="280" x2="500" y2="720" stroke-width="1.4" />
@@ -144,12 +144,12 @@
           <circle cx="500" cy="500" r="1.4" fill="#ffffff" />
           <circle cx="500" cy="500" r="8.5" fill="none" stroke="#ff2212" stroke-width="0.8" opacity="0.45" />
 
-          <!-- Modern Tactical HUD Telemetry -->
+          <!-- Modern Tactical HUD Telemetry in Corners -->
           <g fill="#00f0b4" font-family="'Encode Sans Semi Condensed', monospace" font-size="11" font-weight="700" letter-spacing="1">
-            <text x="120" y="130">MAG: 8.0× | FOV: 6.2°</text>
-            <text x="880" y="130" text-anchor="end">RANGE: LASER READY</text>
-            <text x="120" y="890">CALIBER: .338 MAGNUM</text>
-            <text x="880" y="890" text-anchor="end">ELEV: 0.0 MIL | WIND: 0.0</text>
+            <text x="40" y="45">MAG: 8.0× | FOV: 6.2°</text>
+            <text x="960" y="45" text-anchor="end">RANGE: LASER READY</text>
+            <text x="40" y="975">CALIBER: .338 MAGNUM</text>
+            <text x="960" y="975" text-anchor="end">ELEV: 0.0 MIL | WIND: 0.0</text>
           </g>
         </svg>
       </div>
