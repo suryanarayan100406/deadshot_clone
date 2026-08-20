@@ -1062,6 +1062,12 @@ function buildDustworks(): GameMap {
     pineTree(p, 44, 0, i, 8.5);
   }
 
+  // North Helipad & Substation Terrace
+  const HZ = 33;
+  const HY = 3.2;
+  const HW = 44;
+  const HD = 20;
+
   // ── 1. West Wing: 2-Story Operations Headquarters (Left Complex) ───────────
   const WX = -24;
   const WZ = 0;
@@ -1106,15 +1112,21 @@ function buildDustworks(): GameMap {
   // 2nd Floor Slab
   br(b, WX, fl1H, WZ, WW + 0.5, 0.4, WD + 0.5, 'concreteDark');
 
-  // 2nd Floor Exterior Catwalk Terrace overlooking courtyard
-  const catX = WX + WW / 2 + 2.4;
-  br(b, catX - 1.2, fl1H, WZ, 2.4, 0.4, 16.0, 'concreteDark');
-  guard(b, p, 'z', catX, WZ - 8, WZ + 8, fl2Y, 'metal');
+  // ── 2nd Floor Exterior Catwalk Terrace & Upper Skybridge ─────────────────
+  // Continuous 4.0m-wide elevated walkway running full length from z = -14 to z = 23
+  br(b, -12.0, fl1H, 4.5, 4.0, 0.4, 37.0, 'concreteDark');
+  guard(b, p, 'z', -10.0, -14, 23, fl2Y, 'metal');
+  guard(b, p, 'x', -14.0, -14, -10, fl2Y, 'metal');
+
+  // Transition stairs connecting bridge end (z = 23, y = 4.0m) down to Helipad Terrace (y = 3.2m)
+  stairs(b, -12.0, HY, 23.0, 'z+', 3, (fl2Y - HY) / 3, 0.5, 4.0, 'concreteDark');
+  br(b, -9.8, HY, 24.0, 0.4, 0.9, 2.0, 'concreteDark');
+  br(b, -14.2, HY, 24.0, 0.4, 0.9, 2.0, 'concreteDark');
 
   // ── Grand Central Staircase from Courtyard to 2nd Floor Catwalk ──────────
-  stairs(b, catX + 5.4, 0, WZ, 'x-', 12, 0.30, 0.45, 5.0, 'concreteDark');
-  br(b, catX + 2.7, 0, WZ - 2.7, 5.4, 2.4, 0.4, 'concreteDark');
-  br(b, catX + 2.7, 0, WZ + 2.7, 5.4, 2.4, 0.4, 'concreteDark');
+  stairs(b, -4.6, 0, WZ, 'x-', 12, 0.30, 0.45, 5.0, 'concreteDark');
+  br(b, -7.3, 0, WZ - 2.7, 5.4, 2.4, 0.4, 'concreteDark');
+  br(b, -7.3, 0, WZ + 2.7, 5.4, 2.4, 0.4, 'concreteDark');
 
   // 2nd Floor exterior walls & windows
   const winCatDoor: Door = { at: WZ, width: 2.8, height: 2.5 };
@@ -1141,12 +1153,11 @@ function buildDustworks(): GameMap {
 
   // ── West Operations North Connecting Annex (Closing Gap to Terrace) ────────
   wall(b, 'z', -28, 14, 23, 0, fl1H, 0.5, 'concrete');
-  wall(b, 'z', -18, 14, 23, 0, fl1H, 0.5, 'concrete');
-  br(b, -23, fl1H, 18.5, 10.0, 0.4, 9.0, 'concreteDark');
+  br(b, -21, fl1H, 18.5, 14.0, 0.4, 9.0, 'concreteDark');
+  stairs(b, -21, HY, 23.0, 'z+', 3, (fl2Y - HY) / 3, 0.5, 10.0, 'concreteDark');
   wall(b, 'z', -28, 14, 23, fl2Y, fl2H, 0.5, 'concrete');
-  wall(b, 'z', -18, 14, 23, fl2Y, fl2H, 0.5, 'concrete');
-  br(b, -23, roofY, 18.5, 10.5, 0.4, 9.5, 'concreteDark');
-  guard(b, p, 'z', -17.5, 14, 23, roofWalkY, 'metal');
+  br(b, -21, roofY, 18.5, 14.5, 0.4, 9.5, 'concreteDark');
+  guard(b, p, 'z', -28.25, 14, 23, roofWalkY, 'metal');
 
   // ── 2. East Wing: Industrial Logistics Hangar (Right Complex) ─────────────
   const EX = 24;
@@ -1217,11 +1228,6 @@ function buildDustworks(): GameMap {
   wall(b, 'x', 6, -2, 6, 0, 1.1, 0.4, 'concreteDark');
 
   // ── 5. Upper Back Heliport & Solar Generator Terrace (North) ──────────────
-  const HZ = 33;
-  const HY = 3.2;
-  const HW = 44;
-  const HD = 20;
-
   br(b, 0, 0, HZ, HW, HY, HD, 'concrete');
 
   // Access stairs on left and right
