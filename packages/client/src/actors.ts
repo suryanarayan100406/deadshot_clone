@@ -37,6 +37,7 @@ import {
   weaponById,
   type ActorState,
 } from '@oneshot/shared';
+import { getCamoTexture, getCarbonTexture } from './textures';
 
 /** Snapshot history kept per actor. 20 frames ≈ 1 s, well past the interp delay. */
 const HISTORY = 24;
@@ -185,11 +186,15 @@ export function buildCharacter(shadows: boolean): CharacterRig {
 
   const bodyMat = new THREE.MeshLambertMaterial({ color: NEUTRAL_COLOR });
   const trimMat = new THREE.MeshLambertMaterial({ color: 0x282c32 });
-  const camoMat = new THREE.MeshLambertMaterial({ color: 0x3a4049 });
+  const camoMat = new THREE.MeshLambertMaterial({
+    map: getCamoTexture(),
+    color: 0xcccccc,
+  });
   const gearMat = new THREE.MeshPhongMaterial({
-    color: 0x1a1d22,
-    specular: 0x444c58,
-    shininess: 32,
+    map: getCarbonTexture(),
+    color: 0x282c32,
+    specular: 0x555d6b,
+    shininess: 38,
   });
   const lensMat = new THREE.MeshPhongMaterial({
     color: 0x102824,

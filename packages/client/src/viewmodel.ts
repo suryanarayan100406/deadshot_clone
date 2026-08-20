@@ -25,6 +25,7 @@
 
 import * as THREE from 'three';
 import { MELEE_SWING, clamp, cycleTime, weaponById, type WeaponDef } from '@oneshot/shared';
+import { getCarbonTexture } from './textures';
 
 /** Resting offset from the eye: right, down, forward. */
 const HIP_POS = new THREE.Vector3(0.19, -0.17, -0.34);
@@ -499,9 +500,10 @@ export class ViewModel {
       shininess: 85,
     });
     const gripMat = new THREE.MeshPhongMaterial({
-      color: 0x181a1d,
-      specular: 0x101214,
-      shininess: 12,
+      map: getCarbonTexture(),
+      color: 0x3a3e46,
+      specular: 0x22262c,
+      shininess: 24,
     });
     const brassMat = new THREE.MeshPhongMaterial({
       color: 0xd4a43b,
@@ -523,14 +525,16 @@ export class ViewModel {
     const reticleRedMat = new THREE.MeshBasicMaterial({ color: 0xff2515 });
     const reticleGreenMat = new THREE.MeshBasicMaterial({ color: 0x15ff55 });
     const gloveMat = new THREE.MeshPhongMaterial({
-      color: 0x242830,
-      specular: 0x20242a,
-      shininess: 16,
+      map: getCarbonTexture(),
+      color: 0x303640,
+      specular: 0x38404c,
+      shininess: 28,
     });
     const gloveArmor = new THREE.MeshPhongMaterial({
-      color: 0x111316,
-      specular: 0x4a5260,
-      shininess: 60,
+      map: getCarbonTexture(),
+      color: 0x181a1e,
+      specular: 0x606c7d,
+      shininess: 70,
     });
     this.materials.push(
       bodyMat,

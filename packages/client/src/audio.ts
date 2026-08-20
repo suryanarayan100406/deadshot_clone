@@ -418,78 +418,77 @@ export class AudioEngine {
     const far = own ? 0 : Math.min(1, dist / FAR_SHOT);
     const near = 1 - far * 0.85;
 
-    // 1. Transient — no ramp, a handful of milliseconds, the top of the spectrum.
-    if (near > 0.25) {
-      const f = jit(6400, 0.14);
-      this.noise(dest, now, 0.008, 1.2 * vol * near, 'highpass', f, f, 0.45);
+    // 1. Transient — sharp supersonic crack and initial air displacement
+    if (near > 0.2) {
+      const f = jit(7200, 0.12);
+      this.noise(dest, now, 0.012, 1.4 * vol * near, 'highpass', f, f, 0.5);
     }
 
-    // 2. Blast — the falling filter sweep, saturated. This is the shot.
+    // 2. Blast — falling resonant filter sweep with soft saturation
     this.noise(
       dest,
       now,
-      p,
-      1.0 * vol,
+      p * 1.1,
+      1.15 * vol,
       'lowpass',
-      jit(s.crack, 0.1) * (0.35 + near * 0.65),
-      340,
-      1.1,
+      jit(s.crack * 1.15, 0.08) * (0.4 + near * 0.6),
+      280,
+      1.25,
       false,
-      s.grit,
+      s.grit * 1.3,
     );
-    // A resonant throat under the blast gives it a size; without it the sweep
-    // alone is thin.
+    // Resonant chamber body
     this.noise(
       dest,
       now,
-      p * 0.72,
-      0.52 * vol,
+      p * 0.85,
+      0.65 * vol,
       'bandpass',
-      jit(s.body * 4.5, 0.12),
-      s.body * 1.8,
-      1.7,
+      jit(s.body * 4.2, 0.1),
+      s.body * 1.5,
+      2.0,
       false,
-      s.grit * 0.6,
+      s.grit * 0.8,
     );
 
-    // 3. Punch — short, barely sweeps, so it stays a thump and never a note.
-    this.tone(dest, now, p * 0.55, 0.92 * vol, jit(s.body, 0.05), s.body * 0.62, 'sine');
-    // Your own weapon gets a sub octave for chest. Only yours: from across the
-    // map this would be a bass rumble with no direction, which reads as a bug.
+    // 3. Punch — deep bass punch with fast exponential drop
+    this.tone(dest, now, p * 0.6, 1.1 * vol, jit(s.body * 1.4, 0.04), s.body * 0.45, 'sine');
+    // Sub-bass chest thump for own weapon
     if (own) {
-      this.tone(dest, now, p * 0.85, 0.46 * vol, s.body * 0.52, s.body * 0.4, 'sine');
+      this.tone(dest, now, p * 0.95, 0.75 * vol, s.body * 0.85, 32, 'sine');
+      this.tone(dest, now, 0.035, 0.5 * vol, 140, 40, 'triangle');
     }
 
-    // 4. Mech — bolt or slide, a beat behind, and mostly a close-range detail.
-    if (full && s.mech > 0 && near > 0.3) {
-      const f = jit(s.mechFreq, 0.1);
+    // 4. Mech — mechanical slide/bolt cycle
+    if (full && s.mech > 0 && near > 0.25) {
+      const f = jit(s.mechFreq, 0.08);
       this.noise(
         dest,
-        now + jit(p * 0.34, 0.22),
-        0.03,
-        0.44 * s.mech * vol * near,
+        now + jit(p * 0.28, 0.15),
+        0.04,
+        0.55 * s.mech * vol * near,
         'bandpass',
-        f,
-        f * 0.8,
-        3.2,
+        f * 1.1,
+        f * 0.75,
+        3.8,
       );
+      this.tone(dest, now + p * 0.32, 0.03, 0.25 * vol * near, f * 0.6, f * 0.3, 'triangle');
     }
 
-    // 5. Tail. Louder with distance, and ducked when one is already running —
-    // at 900 RPM the tails would otherwise overlap into a continuous drone.
-    if (s.tail > 0 && (full || far > 0.35)) {
-      let g = 0.3 * vol * (0.45 + far * 1.1);
-      if (now < this.tailUntil) g *= 0.5;
-      this.tailUntil = now + s.tail * 0.55;
+    // 5. Tail — expansive environmental reverberation
+    if (s.tail > 0 && (full || far > 0.3)) {
+      let g = 0.38 * vol * (0.5 + far * 1.2);
+      if (now < this.tailUntil) g *= 0.55;
+      this.tailUntil = now + s.tail * 0.6;
       this.noise(
         dest,
-        now + p * 0.3,
-        s.tail * (1 + far * 0.5),
+        now + p * 0.25,
+        s.tail * (1.1 + far * 0.6),
         g,
         'lowpass',
-        jit(680 + s.body * 3, 0.15),
-        200,
-        0.8,
+        jit(750 + s.body * 2.8, 0.12),
+        160,
+        0.85,
         true,
       );
     }
@@ -502,35 +501,32 @@ export class AudioEngine {
     const now = ctx.currentTime;
     if (!this.budget(now, 2)) return;
 
-    const dest = this.spatial(x, y, z, material === 0 ? 0.55 : 0.5);
+    const dest = this.spatial(x, y, z, material === 0 ? 0.65 : 0.6);
     if (!dest) return;
 
     if (material === 0) {
-      // Stone and metal: a hard tick with a downward sweep, and sometimes a
-      // ricochet whine, which is what stops a firefight sounding like typing.
-      const f = jit(4200, 0.3);
-      this.noise(dest, now, 0.006, 1.0, 'highpass', f, f, 0.5);
-      this.noise(dest, now, 0.075, 0.8, 'lowpass', jit(5200, 0.2), 500, 1.2, false, 0.4);
-      this.tone(dest, now, 0.04, 0.28, jit(420, 0.2), 150, 'triangle');
-      if (Math.random() < 0.22) {
-        const r = jit(2300, 0.25);
-        this.tone(dest, now + 0.012, 0.2, 0.1, r, r * 2.4, 'sine');
+      // Concrete and metal: sharp chip crack + occasional whizzing ricochet
+      const f = jit(5000, 0.25);
+      this.noise(dest, now, 0.008, 1.2, 'highpass', f, f, 0.6);
+      this.noise(dest, now, 0.08, 0.95, 'lowpass', jit(5800, 0.15), 450, 1.3, false, 0.45);
+      this.tone(dest, now, 0.045, 0.35, jit(480, 0.15), 120, 'triangle');
+      if (Math.random() < 0.28) {
+        const r = jit(2600, 0.2);
+        this.tone(dest, now + 0.01, 0.24, 0.14, r, r * 2.6, 'sine');
       }
     } else {
-      // Flesh: no high-frequency crack at all, just a wet low slap. A headshot
-      // gets a harder, brighter one so it is audible without the hitmarker.
+      // Flesh / Headshot: heavy visceral impact
       const head = material === 2;
-      this.noise(dest, now, head ? 0.075 : 0.1, 0.75, 'lowpass', head ? 1500 : 900, 320, 1.1, false, 0.3);
-      this.tone(dest, now, head ? 0.055 : 0.08, 0.42, head ? 250 : 165, 60, 'sine');
+      this.noise(dest, now, head ? 0.085 : 0.12, 0.9, 'lowpass', head ? 1800 : 950, 280, 1.2, false, 0.35);
+      this.tone(dest, now, head ? 0.065 : 0.09, 0.55, head ? 320 : 180, 50, 'sine');
+      if (head) {
+        this.noise(dest, now, 0.015, 0.6, 'bandpass', 3800, 2400, 2.5);
+      }
     }
   }
 
   /**
    * Local confirmation that your bullet connected.
-   *
-   * Short filtered pings rather than raw square waves: a square at 1.2 kHz is a
-   * buzz, and hearing it fifteen times a second during a burst is the fastest
-   * way to make a gunfight unpleasant.
    */
   hitmarker(head: boolean, killed: boolean): void {
     if (!this.ready() || !this.settings.get('hitSound')) return;
@@ -541,17 +537,21 @@ export class AudioEngine {
     if (!this.budget(now, 2)) return;
 
     if (killed) {
-      // A rising two-note figure so a kill is unmistakable mid-fight.
-      this.noise(bus, now, 0.012, 0.34, 'bandpass', 3400, 3400, 2.5);
-      this.tone(bus, now, 0.07, 0.26, 1046, 1046, 'triangle');
-      this.tone(bus, now + 0.007, 0.06, 0.1, 2092, 2092, 'sine');
-      this.tone(bus, now + 0.072, 0.13, 0.24, 1568, 1568, 'triangle');
-      this.tone(bus, now + 0.079, 0.1, 0.09, 3136, 3136, 'sine');
+      // Powerful rewarding kill sound: low sub-drop + double bright chime
+      this.tone(bus, now, 0.18, 0.38, 180, 55, 'sine');
+      this.noise(bus, now, 0.015, 0.4, 'bandpass', 3800, 3800, 3.0);
+      this.tone(bus, now, 0.08, 0.32, 1175, 1175, 'triangle');
+      this.tone(bus, now + 0.008, 0.07, 0.15, 2350, 2350, 'sine');
+      this.tone(bus, now + 0.075, 0.16, 0.3, 1760, 1760, 'triangle');
+      this.tone(bus, now + 0.082, 0.12, 0.12, 3520, 3520, 'sine');
     } else {
-      const f = head ? 2100 : 1380;
-      this.noise(bus, now, 0.008, 0.22, 'bandpass', f * 1.8, f * 1.8, 2.2);
-      this.tone(bus, now, 0.045, 0.2, f, f * 0.9, 'triangle');
-      if (head) this.tone(bus, now, 0.03, 0.08, f * 2, f * 1.8, 'sine');
+      const f = head ? 2400 : 1550;
+      this.noise(bus, now, 0.009, 0.28, 'bandpass', f * 1.8, f * 1.8, 2.5);
+      this.tone(bus, now, 0.05, 0.26, f, f * 0.85, 'triangle');
+      if (head) {
+        this.tone(bus, now, 0.035, 0.12, f * 2.1, f * 1.9, 'sine');
+        this.tone(bus, now, 0.08, 0.22, 220, 75, 'sine'); // Sub skull crunch
+      }
     }
   }
 
@@ -563,8 +563,8 @@ export class AudioEngine {
     if (!bus) return;
     const now = ctx.currentTime;
     if (!this.budget(now, 2)) return;
-    this.noise(bus, now, 0.14, 0.5, 'lowpass', 900, 260, 0.9, false, 0.3);
-    this.tone(bus, now, 0.16, 0.32, 185, 58, 'sine');
+    this.noise(bus, now, 0.16, 0.6, 'lowpass', 1000, 220, 0.95, false, 0.35);
+    this.tone(bus, now, 0.18, 0.4, 210, 50, 'sine');
   }
 
   /** Local death sting. */
@@ -574,9 +574,9 @@ export class AudioEngine {
     const bus = this.sfxBus;
     if (!bus) return;
     const now = ctx.currentTime;
-    this.noise(bus, now, 0.5, 0.34, 'lowpass', 1400, 180, 0.7, true, 0.25);
-    this.tone(bus, now, 0.6, 0.3, 240, 44, 'sawtooth');
-    this.tone(bus, now + 0.02, 0.5, 0.14, 120, 33, 'sine');
+    this.noise(bus, now, 0.55, 0.42, 'lowpass', 1600, 150, 0.75, true, 0.3);
+    this.tone(bus, now, 0.65, 0.38, 260, 38, 'sawtooth');
+    this.tone(bus, now + 0.02, 0.55, 0.2, 130, 28, 'sine');
   }
 
   /** Respawn / round start. */
@@ -586,18 +586,14 @@ export class AudioEngine {
     const bus = this.sfxBus;
     if (!bus) return;
     const now = ctx.currentTime;
-    this.tone(bus, now, 0.16, 0.18, 440, 660, 'triangle');
-    this.tone(bus, now + 0.085, 0.22, 0.16, 660, 880, 'triangle');
-    this.noise(bus, now, 0.2, 0.1, 'bandpass', 1800, 3600, 1.2);
+    this.tone(bus, now, 0.18, 0.22, 440, 660, 'triangle');
+    this.tone(bus, now + 0.09, 0.24, 0.2, 660, 880, 'triangle');
+    this.noise(bus, now, 0.22, 0.12, 'bandpass', 2000, 4000, 1.2);
   }
 
   /**
-   * Reload, as a sequence of distinct mechanical stages rather than a row of
-   * identical clicks: catch release, magazine out, magazine in, action closed.
-   *
-   * Spacing is derived from the weapon's own reload time, so the last stage
-   * always lands as the weapon becomes usable — the animation, the timer and the
-   * sound are all reading from the same number.
+   * Reload, as a sequence of distinct mechanical stages: catch release,
+   * magazine out, magazine in with heavy snap, and action racked closed.
    */
   reload(weaponId: number): void {
     if (!this.ready()) return;
@@ -610,31 +606,30 @@ export class AudioEngine {
     const w = weaponById(weaponId);
     const t = Math.max(0.3, w.reloadTime);
 
-    // A tube-fed shotgun is shells going in one at a time, not a magazine.
     if (w.fireMode === 'pump') {
       const shells = Math.min(6, Math.max(2, w.magSize));
       for (let i = 0; i < shells; i++) {
         const at = now + t * (0.1 + (i * 0.72) / shells);
-        this.noise(bus, at, 0.045, 0.24, 'bandpass', jit(1250, 0.12), 700, 2.6, false, 0.3);
-        this.tone(bus, at, 0.03, 0.1, jit(260, 0.1), 120, 'triangle');
+        this.noise(bus, at, 0.045, 0.28, 'bandpass', jit(1350, 0.1), 750, 2.8, false, 0.35);
+        this.tone(bus, at, 0.035, 0.14, jit(280, 0.1), 110, 'triangle');
       }
-      // Pump the action closed.
-      this.noise(bus, now + t * 0.88, 0.07, 0.32, 'bandpass', 900, 480, 2.2, false, 0.4);
-      this.noise(bus, now + t * 0.95, 0.06, 0.34, 'bandpass', 1700, 900, 3.0, false, 0.4);
+      this.noise(bus, now + t * 0.86, 0.08, 0.38, 'bandpass', 1000, 450, 2.4, false, 0.45);
+      this.noise(bus, now + t * 0.94, 0.07, 0.42, 'bandpass', 1900, 850, 3.2, false, 0.45);
       return;
     }
 
-    // Magazine catch: small, high, dry.
-    this.noise(bus, now + t * 0.08, 0.03, 0.2, 'bandpass', jit(2600, 0.1), 1800, 4.5);
-    // Magazine out: a rattle with some weight.
-    this.noise(bus, now + t * 0.24, 0.09, 0.22, 'bandpass', jit(1100, 0.12), 520, 1.8, false, 0.25);
-    // Magazine in: the heaviest event in the sequence.
+    // Magazine catch release
+    this.noise(bus, now + t * 0.08, 0.035, 0.25, 'bandpass', jit(2800, 0.1), 1900, 4.8);
+    // Magazine slide out
+    this.noise(bus, now + t * 0.24, 0.1, 0.26, 'bandpass', jit(1200, 0.1), 480, 2.0, false, 0.3);
+    // Magazine insertion slam with bass thud
     const seatAt = now + t * 0.6;
-    this.noise(bus, seatAt, 0.06, 0.34, 'lowpass', jit(1500, 0.1), 380, 1.0, false, 0.45);
-    this.tone(bus, seatAt, 0.05, 0.22, jit(150, 0.08), 70, 'sine');
-    // Action home: two-part, pull then snap, so it reads as a mechanism.
-    this.noise(bus, now + t * 0.84, 0.05, 0.2, 'bandpass', jit(1900, 0.1), 1100, 2.4, false, 0.3);
-    this.noise(bus, now + t * 0.94, 0.04, 0.3, 'bandpass', jit(3000, 0.1), 1600, 4.0, false, 0.35);
+    this.noise(bus, seatAt, 0.07, 0.42, 'lowpass', jit(1600, 0.1), 320, 1.1, false, 0.5);
+    this.tone(bus, seatAt, 0.06, 0.3, jit(160, 0.08), 55, 'sine');
+    // Slide rack pull and snap home
+    this.noise(bus, now + t * 0.83, 0.06, 0.26, 'bandpass', jit(2100, 0.1), 1200, 2.6, false, 0.35);
+    this.noise(bus, now + t * 0.93, 0.05, 0.38, 'bandpass', jit(3200, 0.1), 1500, 4.2, false, 0.4);
+    this.tone(bus, now + t * 0.94, 0.04, 0.16, 850, 420, 'triangle');
   }
 
   /** Weapon swap. */

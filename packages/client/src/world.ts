@@ -35,6 +35,7 @@ import {
   type MatKey,
 } from '@oneshot/shared';
 import { buildProps } from './props';
+import { getTextureForMaterial } from './textures';
 
 /** Deterministic hash → [0,1). Same input always gives the same tint. */
 function hash01(x: number, y: number, z: number, salt: number): number {
@@ -142,6 +143,7 @@ function mergeBrushes(brushes: readonly Brush[], baseColor: number): THREE.Buffe
   const positions = new Float32Array(total * 3);
   const normals = new Float32Array(total * 3);
   const colors = new Float32Array(total * 3);
+  const uvs = new Float32Array(total * 2);
   const indices: number[] = [];
 
   const base = new THREE.Color(baseColor);
@@ -202,15 +204,20 @@ function mergeBrushes(brushes: readonly Brush[], baseColor: number): THREE.Buffe
           const cu = c === 0 || c === 3 ? -1 : 1;
           const cv = c < 2 ? -1 : 1;
           const q = vi * 3;
-          positions[q] = cx + ex + ux * su * cu + vx * sv * cv;
-          positions[q + 1] = cy + ey + uy * su * cu + vy * sv * cv;
-          positions[q + 2] = cz + ez + uz * su * cu + vz * sv * cv;
+          const px = cx + ex + ux * su * cu + vx * sv * cv;
+          const py = cy + ey + uy * su * cu + vy * sv * cv;
+          const pz = cz + ez + uz * su * cu + vz * sv * cv;
+          positions[q] = px;
+          positions[q + 1] = py;
+          positions[q + 2] = pz;
           normals[q] = nx;
           normals[q + 1] = ny;
           normals[q + 2] = nz;
           colors[q] = r;
           colors[q + 1] = g;
           colors[q + 2] = bl;
+          uvs[vi * 2] = px * 0.25;
+          uvs[vi * 2 + 1] = pz * 0.25;
           vi++;
         }
         indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
@@ -229,15 +236,19 @@ function mergeBrushes(brushes: readonly Brush[], baseColor: number): THREE.Buffe
           const wy = c < 2 ? yLo : yHi;
           const t = faceTint * contactShade(wy, y0, y1, band, lip);
           const q = vi * 3;
-          positions[q] = cx + ex + ux * su * cu;
+          const px = cx + ex + ux * su * cu;
+          const pz = cz + ez + uz * su * cu;
+          positions[q] = px;
           positions[q + 1] = wy;
-          positions[q + 2] = cz + ez + uz * su * cu;
+          positions[q + 2] = pz;
           normals[q] = nx;
           normals[q + 1] = 0;
           normals[q + 2] = nz;
           colors[q] = base.r * t;
           colors[q + 1] = base.g * t;
           colors[q + 2] = base.b * t;
+          uvs[vi * 2] = nx !== 0 ? pz * 0.25 : px * 0.25;
+          uvs[vi * 2 + 1] = wy * 0.25;
           vi++;
         }
         indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
@@ -249,6 +260,7 @@ function mergeBrushes(brushes: readonly Brush[], baseColor: number): THREE.Buffe
   geo.setAttribute('position', new THREE.BufferAttribute(positions.subarray(0, vi * 3), 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(normals.subarray(0, vi * 3), 3));
   geo.setAttribute('color', new THREE.BufferAttribute(colors.subarray(0, vi * 3), 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs.subarray(0, vi * 2), 2));
   geo.setIndex(indices);
   geo.computeBoundingSphere();
   return geo;
@@ -355,9 +367,11 @@ export class World {
       const spec = MATERIALS[key];
       const geo = mergeBrushes(list, spec.color);
       const transparent = spec.opacity !== undefined && spec.opacity < 1;
+      const tex = getTextureForMaterial(key);
       let mat: THREE.Material;
       if (key === 'metal' || key === 'metalDark' || key === 'accent') {
         mat = new THREE.MeshPhongMaterial({
+          map: tex,
           vertexColors: true,
           specular: key === 'metal' ? 0x707c8c : 0x424a54,
           shininess: key === 'metal' ? 60 : 42,
@@ -368,6 +382,7 @@ export class World {
         });
       } else {
         mat = new THREE.MeshLambertMaterial({
+          map: tex,
           vertexColors: true,
           transparent,
           opacity: spec.opacity ?? 1,
