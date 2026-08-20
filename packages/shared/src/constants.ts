@@ -44,7 +44,26 @@ export const SPEED_WALK = 6.2;
 export const SPEED_SPRINT = 8.8;
 export const SPEED_CROUCH = 3.0;
 
-export const ACCEL_GROUND = 90.0;
+/**
+ * Ground acceleration, m/s².
+ *
+ * **This has to stay above `SPEED_SPRINT * FRICTION_GROUND`.** Friction removes
+ * `speed * FRICTION_GROUND * dt` every tick while acceleration only ever adds
+ * `ACCEL_GROUND * dt` (see `accelerate` in movement.ts — the gain is *not* scaled
+ * by wishSpeed the way Quake's is), so the two balance at `ACCEL_GROUND /
+ * FRICTION_GROUND` and that ratio is a hard ceiling on ground speed.
+ *
+ * At the old 90 the ceiling was 8.18 m/s, which sat *below* `SPEED_SPRINT`. Sprint
+ * was therefore unreachable and — the part that made it hard to spot — untunable:
+ * raising `SPEED_SPRINT` changed nothing at all, because the cap came from this
+ * number instead. It also flattened every weapon's `moveMult`, since a sprinting
+ * player clamped to 8.18 regardless of what the weapon table asked for.
+ *
+ * 150 puts the ceiling at 13.6 m/s, clear of the fastest thing any weapon can ask
+ * for (Blade sprinting: 8.8 × 1.18 = 10.4). The test suite asserts every speed in
+ * the table is actually reached, so this cannot silently regress again.
+ */
+export const ACCEL_GROUND = 150.0;
 export const ACCEL_AIR = 26.0;
 export const FRICTION_GROUND = 11.0;
 /** Below this speed friction stops scaling and just kills the remainder. */
@@ -92,15 +111,6 @@ export const TARGET_LOBBY_SIZE = 8;
  * countdown is cancellable rather than a point of no return.
  */
 export const LOBBY_COUNTDOWN_MS = 5000;
-/**
- * Humans needed before a full ready-up starts the match on its own.
- *
- * One player readying up alone must *not* trip the auto-start: a solo host is
- * the normal case for someone setting up a private room and waiting for friends,
- * and starting the moment they click Ready would make the lobby impossible to
- * wait in. They can still press Start whenever they want.
- */
-export const LOBBY_AUTOSTART_MIN = 2;
 
 // ── Teams ────────────────────────────────────────────────────────────────────
 export const TEAM_NONE = 0;

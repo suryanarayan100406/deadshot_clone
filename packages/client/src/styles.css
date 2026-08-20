@@ -291,11 +291,31 @@ input {
   text-transform: none;
 }
 
+/* JOIN lives inside the party row so the code and the button that consumes it are
+   one control; CREATE spans the row below it because it ignores the field
+   entirely — the shape of the layout says which button reads what. */
+#play-join,
 #room-new {
   height: 40px;
-  padding: 0 14px;
+  padding: 0 16px;
   font-size: 14px;
   white-space: nowrap;
+}
+
+/* Disabled here rather than hidden: a Join that vanished when the box emptied
+   would move the buttons under the cursor while somebody was typing. */
+#play-join:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.party-note {
+  margin: 1px 0 0;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-faint);
 }
 
 /* ── Segmented control ─────────────────────────────────────────────────── */
@@ -2143,6 +2163,351 @@ select {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* ── Pre-match staging room ────────────────────────────────────────────────
+   A takeover, and the only screen in the game whose middle is deliberately
+   empty. The room and the people standing in it are drawn into the main canvas
+   behind this layer, so anything painted across the centre would cover the one
+   thing the player opened it to look at.
+
+   Hence two bands and hence the gradients: the chrome has to stay readable over
+   whatever geometry happens to be behind it without drawing a hard horizontal
+   edge across the picture. A flat bar would look like a letterbox.
+
+   Layering is unchanged from the panel this replaces — 30, above the HUD (20)
+   and below the menu (40) — because the pause menu must still be able to cover
+   it.
+   ────────────────────────────────────────────────────────────────────────── */
+
+#lobby-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  /* Off at the root and back on for the bands. The middle is a window, not a
+     surface: a click there has nothing to hit and should not be swallowed. */
+  pointer-events: none;
+  animation: fadein 0.2s ease-out;
+}
+
+#lobby-screen.hidden {
+  display: none;
+}
+
+.ls-top,
+.ls-bottom {
+  display: flex;
+  gap: clamp(12px, 2.5vw, 28px);
+  padding: 16px clamp(14px, 3vw, 40px);
+  pointer-events: auto;
+}
+
+/* The fade runs well past the text on the inside edge, so the band ends in the
+   picture rather than at a line. */
+.ls-top {
+  align-items: flex-start;
+  padding-bottom: 40px;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 9, 13, 0.95) 0%,
+    rgba(8, 9, 13, 0.84) 44%,
+    rgba(8, 9, 13, 0) 100%
+  );
+}
+
+.ls-bottom {
+  align-items: flex-end;
+  padding-top: 46px;
+  background: linear-gradient(
+    0deg,
+    rgba(8, 9, 13, 0.95) 0%,
+    rgba(8, 9, 13, 0.84) 44%,
+    rgba(8, 9, 13, 0) 100%
+  );
+}
+
+.ls-titles {
+  margin-right: auto;
+}
+
+.ls-title {
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--gold);
+}
+
+.ls-sub {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.ls-leave {
+  flex: none;
+  height: 38px;
+  padding: 0 16px;
+  font-size: 16px;
+}
+
+.ls-invite {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  padding: 8px 12px;
+  border-radius: var(--r-m);
+  background: rgba(242, 193, 78, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(242, 193, 78, 0.24);
+}
+
+.ls-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+#lb-code {
+  font-size: 24px;
+  font-weight: 800;
+  /* Wide tracking because this is the one string in the game that gets read out
+     loud to somebody else. */
+  letter-spacing: 0.18em;
+  color: #fff;
+}
+
+.ls-invite .btn {
+  flex: none;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 15px;
+}
+
+/* The window. Click-through, and its only occupant is the countdown — pinned
+   near the top so it never lands on somebody's face. */
+.ls-mid {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  padding-top: 1.5vh;
+  overflow: hidden;
+}
+
+.ls-count {
+  display: grid;
+  justify-items: center;
+  padding: 10px 30px 12px;
+  border-radius: var(--r-l);
+  pointer-events: none;
+  background: rgba(8, 9, 13, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(242, 193, 78, 0.3);
+  backdrop-filter: blur(3px);
+  animation: pop 0.18s ease-out;
+}
+
+.ls-count b {
+  font-size: clamp(44px, 7vw, 76px);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--gold);
+  text-shadow: var(--hud-shadow);
+  /* A one-second beat. The digit is repainted on the same period, so the two
+     land together without needing to restart an animation on every change. */
+  animation: cdbeat 1s ease-out infinite;
+}
+
+.ls-count span {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+@keyframes cdbeat {
+  0% {
+    transform: scale(1.09);
+  }
+  30%,
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ── Bottom band: what the room is waiting on ─────────────────────────────── */
+
+.ls-state {
+  margin-right: auto;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ls-players {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ls-players b {
+  font-size: 19px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.ls-tally {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+}
+
+/* Everybody in. Worth its own colour: it is the moment the host is waiting for,
+   and it is read from across a desk. */
+.ls-tally.all {
+  color: var(--green);
+}
+
+.ls-note {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.ls-note.counting {
+  font-family: var(--font);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+}
+
+/* ── Bottom band: the controls ────────────────────────────────────────────── */
+
+.ls-controls {
+  flex: none;
+  display: grid;
+  gap: 10px;
+  justify-items: stretch;
+}
+
+.ls-opt {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.ls-opt label {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.ls-opt label small {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* The settings panel's switch is laid out for its own grid; reclaim it here. */
+.ls-opt .switch {
+  grid-column: auto;
+  width: 46px;
+  height: 25px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.ls-opt .switch::after {
+  width: 19px;
+  height: 19px;
+}
+
+.ls-opt .switch.on {
+  background: var(--green);
+}
+
+.ls-opt .switch.on::after {
+  transform: translateX(21px);
+}
+
+/* Everyone sees the setting; only the host can move it. A locked switch explains
+   the room, a hidden one does not. */
+.ls-opt.locked {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.ls-acts {
+  display: flex;
+  gap: 10px;
+}
+
+.ls-acts .btn {
+  width: min(190px, 40vw);
+  height: 46px;
+  padding: 0;
+  font-size: 18px;
+}
+
+/* Held, not hidden: the host has to see that the button is theirs and that
+   something is stopping it. Hiding it would read as "you are not the host". */
+.ls-acts .btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  filter: saturate(0.4);
+}
+
+#lb-ready.on {
+  color: #12291b;
+  background: var(--green);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.2);
+}
+
+/* Narrow and short screens. Both bands have to shrink rather than grow a scroll
+   bar: the middle is the content, and eating it to fit the chrome inverts the
+   whole point of the screen. */
+@media (max-width: 860px) {
+  .ls-top,
+  .ls-bottom {
+    flex-wrap: wrap;
+  }
+  .ls-top {
+    padding-bottom: 28px;
+  }
+  .ls-bottom {
+    padding-top: 32px;
+  }
+  .ls-controls,
+  .ls-state {
+    flex: 1 1 100%;
+  }
+  .ls-acts .btn {
+    flex: 1 1 0;
+    width: auto;
+  }
+}
+
+@media (max-height: 620px) {
+  .ls-title {
+    font-size: 20px;
+  }
+  .ls-top {
+    padding-bottom: 18px;
+  }
+  .ls-bottom {
+    padding-top: 22px;
+  }
+  .ls-note {
+    display: none;
   }
 }
 

@@ -87,7 +87,8 @@ export class ServerPlayer {
    *
    * Cleared by the room when a match begins rather than left standing, so the
    * next lobby does not open with everybody already ready from the last one —
-   * which would auto-start the following round before anyone had looked at it.
+   * which would leave the host's Start armed for a round nobody had agreed to
+   * yet, since consent is exactly what that button is gated on.
    */
   ready = false;
 

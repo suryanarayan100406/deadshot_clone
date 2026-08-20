@@ -56,17 +56,34 @@ interface Frame {
   flags: number;
 }
 
-const TEAM_COLORS: Record<number, number> = {
+/**
+ * Side colours, exported because the staging room paints the same people.
+ *
+ * The *mapping* is deliberately not shared. In a match you need to know friend from
+ * enemy in a tenth of a second, so an actor paints every enemy the same red whatever
+ * side they are on. In a lobby nobody is shooting anybody yet and the useful question
+ * is which side each person is on, so the staging room paints both teams by their own
+ * colour. Same palette, different question.
+ */
+export const TEAM_COLORS: Record<number, number> = {
   [TEAM_A]: 0xf2c14e,
   [TEAM_B]: 0x4f8fd0,
 };
 const ENEMY_COLOR = 0xd0574e;
-const NEUTRAL_COLOR = 0xb8b3c4;
+export const NEUTRAL_COLOR = 0xb8b3c4;
 
 /** Cached nameplate textures, keyed by the text drawn into them. */
 const labelCache = new Map<string, THREE.Texture>();
 
-function labelTexture(text: string, color: string): THREE.Texture {
+/**
+ * Text as a texture, outlined so it stays legible over anything.
+ *
+ * Exported because the lobby's staging room labels its characters too, and a
+ * second implementation would drift: different weight, different outline, two
+ * caches. Callers get a *shared* texture back — never mutate it, and never
+ * dispose it.
+ */
+export function labelTexture(text: string, color: string): THREE.Texture {
   const key = `${text}\u0000${color}`;
   const hit = labelCache.get(key);
   if (hit) return hit;
@@ -100,10 +117,246 @@ function labelTexture(text: string, color: string): THREE.Texture {
   return tex;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   The character
+   ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Joint positions, in metres above the feet of a standing player.
+ *
+ * Named and exported because two places pose this skeleton — the actor below and
+ * the lobby's staging room — and a shoulder that sat at 1.4 in one and 1.38 in the
+ * other would hold the weapon somewhere slightly different in the lobby than in
+ * the match. That is the kind of difference a player registers as "it looks off"
+ * without ever being able to point at it.
+ */
+export const JOINT = {
+  torsoY: 0.86,
+  hipsY: 0.76,
+  shoulderY: 1.4,
+  legHipY: 0.78,
+  /** Half the separation: arms and legs are mirrored about the spine. */
+  armX: 0.28,
+  legX: 0.11,
+} as const;
+
+/** Every limb of a built character, by name, plus what it takes to free it. */
+export interface CharacterRig {
+  /** Origin at the feet, +Z behind the player — so `rotation.y` is view yaw. */
+  group: THREE.Group;
+  head: THREE.Mesh;
+  visor: THREE.Mesh;
+  torso: THREE.Mesh;
+  hips: THREE.Mesh;
+  armL: THREE.Mesh;
+  armR: THREE.Mesh;
+  legL: THREE.Mesh;
+  legR: THREE.Mesh;
+  gun: THREE.Mesh;
+  /** Team colour lives here — the one material a caller is expected to recolour. */
+  bodyMat: THREE.MeshLambertMaterial;
+  trimMat: THREE.MeshLambertMaterial;
+  gearMat: THREE.MeshPhongMaterial;
+  dispose(): void;
+}
+
+/**
+ * Build one character out of boxes.
+ *
+ * No model files anywhere in this project, so a player is around sixty boxes in
+ * three materials. The limbs are returned by name because posing is the caller's
+ * job: an actor poses from network flags, the lobby poses an idle stance, and both
+ * want the same body.
+ *
+ * Two invariants hold this together and both are easy to break by accident:
+ *
+ *  1. **Everything stays inside the collider envelope** the server traces against.
+ *     Geometry that sticks out past the hitbox produces shots that visibly connect
+ *     and deal no damage, which reads as broken netcode rather than as a modelling
+ *     liberty. So the helmet lives *within* the head cube and is distinguished by
+ *     material and cut, not by being bigger than the head.
+ *  2. **Limb geometry is pre-translated so its pivot is the joint.** A child bolted
+ *     to an arm therefore measures its local Y *down from the shoulder*, not from
+ *     the limb's centre — which is what makes the whole rig animate for free when
+ *     the caller rotates eight objects by name.
+ */
+export function buildCharacter(shadows: boolean): CharacterRig {
+  const ownedGeo: THREE.BufferGeometry[] = [];
+
+  const bodyMat = new THREE.MeshLambertMaterial({ color: NEUTRAL_COLOR });
+  const trimMat = new THREE.MeshLambertMaterial({ color: 0x2f3238 });
+  // Gear is Phong with a low shine so webbing, helmets and boots separate from the
+  // flat team colour. The team surfaces stay Lambert on purpose: a specular roll
+  // across the one colour that tells you whether to shoot would be a readability
+  // regression dressed up as fidelity.
+  const gearMat = new THREE.MeshPhongMaterial({
+    color: 0x23262b,
+    specular: 0x3c4148,
+    shininess: 26,
+  });
+
+  const box = (sx: number, sy: number, sz: number, mat: THREE.Material) => {
+    const g = new THREE.BoxGeometry(sx, sy, sz);
+    ownedGeo.push(g);
+    const m = new THREE.Mesh(g, mat);
+    m.castShadow = shadows;
+    m.receiveShadow = false;
+    return m;
+  };
+
+  /** Bolts a detail box onto a parent limb — see invariant 2 above. */
+  const detail = (
+    parent: THREE.Object3D,
+    sx: number,
+    sy: number,
+    sz: number,
+    mat: THREE.Material,
+    x: number,
+    y: number,
+    z: number,
+  ): THREE.Mesh => {
+    const m = box(sx, sy, sz, mat);
+    m.position.set(x, y, z);
+    parent.add(m);
+    return m;
+  };
+
+  // Proportions derive from the shared collider: 1.8 m tall, 0.8 m wide. The head
+  // sits at the crown so the visible head matches HEAD_BOX exactly.
+  const head = box(HEAD_BOX, HEAD_BOX, HEAD_BOX, bodyMat);
+  const visor = box(HEAD_BOX * 0.82, HEAD_BOX * 0.3, 0.02, trimMat);
+  const torso = box(0.44, 0.56, 0.26, bodyMat);
+  const hips = box(0.38, 0.16, 0.24, trimMat);
+  const armL = box(0.12, 0.5, 0.12, trimMat);
+  const armR = box(0.12, 0.5, 0.12, trimMat);
+  const legL = box(0.15, 0.72, 0.16, trimMat);
+  const legR = box(0.15, 0.72, 0.16, trimMat);
+  const gun = box(0.07, 0.09, 0.44, trimMat);
+
+  // Pivot the limbs at the shoulder/hip by offsetting the mesh inside a group —
+  // rotating a centred box would swing it from the middle.
+  armL.geometry.translate(0, -0.25, 0);
+  armR.geometry.translate(0, -0.25, 0);
+  legL.geometry.translate(0, -0.36, 0);
+  legR.geometry.translate(0, -0.36, 0);
+
+  // ── Gear ──────────────────────────────────────────────────────────────────
+  const H = HEAD_BOX;
+  detail(head, H * 1.0, H * 0.5, H * 1.0, gearMat, 0, H * 0.24, 0);
+  // Crown plate in team colour — the surface most often seen from above and across
+  // the map, so it is the one that carries the identification.
+  detail(head, H * 0.72, H * 0.1, H * 0.78, bodyMat, 0, H * 0.46, 0);
+  // Brim over the visor, ear cups either side, mandible below.
+  detail(head, H * 0.94, H * 0.1, H * 0.16, gearMat, 0, H * 0.08, -H * 0.42);
+  detail(head, H * 0.12, H * 0.28, H * 0.34, gearMat, H * 0.44, -H * 0.04, 0);
+  detail(head, H * 0.12, H * 0.28, H * 0.34, gearMat, -H * 0.44, -H * 0.04, 0);
+  detail(head, H * 0.54, H * 0.22, H * 0.16, gearMat, 0, -H * 0.3, -H * 0.42);
+
+  // Torso: plate carrier over the chest, straps, pouches, shoulders, pack.
+  detail(torso, 0.4, 0.3, 0.06, bodyMat, 0, 0.06, -0.15);
+  detail(torso, 0.05, 0.34, 0.02, gearMat, 0.13, 0.1, -0.175);
+  detail(torso, 0.05, 0.34, 0.02, gearMat, -0.13, 0.1, -0.175);
+  detail(torso, 0.09, 0.08, 0.05, gearMat, 0.1, -0.15, -0.16);
+  detail(torso, 0.09, 0.08, 0.05, gearMat, -0.1, -0.15, -0.16);
+  detail(torso, 0.34, 0.07, 0.24, trimMat, 0, 0.3, 0);
+  detail(torso, 0.13, 0.12, 0.22, bodyMat, 0.235, 0.2, 0);
+  detail(torso, 0.13, 0.12, 0.22, bodyMat, -0.235, 0.2, 0);
+  detail(torso, 0.36, 0.26, 0.05, trimMat, 0, 0.04, 0.145);
+  detail(torso, 0.26, 0.28, 0.12, gearMat, 0, -0.04, 0.2);
+  detail(torso, 0.28, 0.04, 0.13, trimMat, 0, 0.08, 0.205);
+
+  // Hips: belt, buckle, thigh rig.
+  detail(hips, 0.4, 0.06, 0.26, gearMat, 0, 0.02, 0);
+  detail(hips, 0.07, 0.05, 0.02, bodyMat, 0, 0.02, -0.135);
+  detail(hips, 0.1, 0.13, 0.08, gearMat, -0.19, -0.07, 0.01);
+
+  // Arms: shoulder cap, elbow pad, wrist band, glove. The cap is team-coloured
+  // because the shoulder is what shows first around a corner.
+  for (const arm of [armL, armR]) {
+    detail(arm, 0.135, 0.1, 0.135, bodyMat, 0, -0.02, 0);
+    detail(arm, 0.13, 0.09, 0.13, gearMat, 0, -0.26, 0);
+    detail(arm, 0.135, 0.03, 0.135, bodyMat, 0, -0.42, 0);
+    detail(arm, 0.125, 0.11, 0.14, gearMat, 0, -0.49, -0.01);
+  }
+
+  // Legs: knee pad, boot, sole.
+  for (const leg of [legL, legR]) {
+    detail(leg, 0.16, 0.12, 0.045, gearMat, 0, -0.36, -0.085);
+    detail(leg, 0.17, 0.15, 0.21, gearMat, 0, -0.645, -0.025);
+    detail(leg, 0.18, 0.035, 0.22, trimMat, 0, -0.735, -0.025);
+  }
+
+  // Third-person weapon: a bar reads as a bar at fifty metres. A magazine under it
+  // and an optic on top give it enough silhouette to be recognisable as a gun.
+  detail(gun, 0.05, 0.13, 0.055, gearMat, 0, -0.1, 0.05);
+  detail(gun, 0.04, 0.045, 0.085, gearMat, 0, 0.066, 0.015);
+
+  const group = new THREE.Group();
+  group.add(head, torso, hips, armL, armR, legL, legR, gun);
+  // The visor is the one part that belongs to another part: it sits on the face, so
+  // it is parented to the head rather than posed alongside it. Both pose functions
+  // used to place it themselves, which worked only because the head never yawed —
+  // the staging room's characters glance around, and a sibling visor would have slid
+  // off the side of the face the moment one did.
+  head.add(visor);
+  visor.position.set(0, HEAD_BOX * 0.06, -(HEAD_BOX * 0.5 + 0.012));
+
+  return {
+    group,
+    head,
+    visor,
+    torso,
+    hips,
+    armL,
+    armR,
+    legL,
+    legR,
+    gun,
+    bodyMat,
+    trimMat,
+    gearMat,
+    dispose(): void {
+      group.parent?.remove(group);
+      for (const g of ownedGeo) g.dispose();
+      ownedGeo.length = 0;
+      bodyMat.dispose();
+      trimMat.dispose();
+      gearMat.dispose();
+    },
+  };
+}
+
+/**
+ * Pose a weapon in a character's right hand, pointing where they are looking.
+ *
+ * Shared for the same reason `JOINT` is: the lobby holds the gun the player picked
+ * in the menu, and it has to be held the way the match holds it or the staging room
+ * is showing a different game.
+ *
+ * `pitch` is the shared convention — positive looks up — and both the arc the weapon
+ * rides on and its own tilt follow it. The tilt used to be negated, which pointed the
+ * muzzle at the floor whenever the player looked at the sky. Nobody noticed for a
+ * while because the only place it showed was somebody else's silhouette at range;
+ * the staging room puts the same body two metres from the camera.
+ */
+export function poseWeapon(rig: CharacterRig, weaponId: number, pitch: number, k: number): void {
+  const w = weaponById(weaponId);
+  const gunLen = Math.max(0.18, w.viz.bodyLen + w.viz.barrelLen);
+  rig.gun.scale.set(1, 1, gunLen / 0.44);
+  const reach = 0.34 + gunLen * 0.35;
+  rig.gun.position.set(
+    -JOINT.armX,
+    JOINT.shoulderY * k - 0.22 + Math.sin(pitch) * reach,
+    -Math.cos(pitch) * reach,
+  );
+  rig.gun.rotation.set(pitch, 0, 0);
+  rig.gun.visible = w.fireMode !== 'melee';
+}
+
 /** One rendered player. */
 class Actor {
   readonly id: number;
-  readonly group = new THREE.Group();
+  readonly group: THREE.Group;
 
   team = 0;
   health = 100;
@@ -130,6 +383,7 @@ class Actor {
   landedThisFrame = false;
 
   private frames: Frame[] = [];
+  private rig: CharacterRig;
   private head: THREE.Mesh;
   private torso: THREE.Mesh;
   private hips: THREE.Mesh;
@@ -138,7 +392,6 @@ class Actor {
   private legL: THREE.Mesh;
   private legR: THREE.Mesh;
   private gun: THREE.Mesh;
-  private visor: THREE.Mesh;
   private label: THREE.Sprite;
   private bodyMat: THREE.MeshLambertMaterial;
   private trimMat: THREE.MeshLambertMaterial;
@@ -146,147 +399,27 @@ class Actor {
   private deadAt = 0;
   private labelText = '';
   private labelColor = '';
-  private ownedGeo: THREE.BufferGeometry[] = [];
 
   constructor(id: number, shadows: boolean) {
     this.id = id;
 
-    this.bodyMat = new THREE.MeshLambertMaterial({ color: NEUTRAL_COLOR });
-    this.trimMat = new THREE.MeshLambertMaterial({ color: 0x2f3238 });
-    // Gear is Phong with a low shine so webbing, helmets and boots separate from
-    // the flat team colour. The team surfaces stay Lambert on purpose: a specular
-    // roll across the one colour that tells you whether to shoot would be a
-    // readability regression dressed up as fidelity.
-    this.gearMat = new THREE.MeshPhongMaterial({
-      color: 0x23262b,
-      specular: 0x3c4148,
-      shininess: 26,
-    });
-
-    const box = (sx: number, sy: number, sz: number, mat: THREE.Material) => {
-      const g = new THREE.BoxGeometry(sx, sy, sz);
-      this.ownedGeo.push(g);
-      const m = new THREE.Mesh(g, mat);
-      m.castShadow = shadows;
-      m.receiveShadow = false;
-      return m;
-    };
-
-    /**
-     * Bolts a detail box onto a parent limb.
-     *
-     * Parenting rather than adding to the group is what keeps this free: the
-     * crouch scale, the gait swing and the death collapse are all applied to the
-     * eight limbs by name in `poseAlive`/`poseDead`, and children inherit every
-     * one of them without a line of animation code.
-     *
-     * Note that limb geometry is pre-translated so its pivot is the joint, so a
-     * child's local Y is measured *down from the shoulder or hip*, not from the
-     * limb's centre.
-     */
-    const detail = (
-      parent: THREE.Object3D,
-      sx: number,
-      sy: number,
-      sz: number,
-      mat: THREE.Material,
-      x: number,
-      y: number,
-      z: number,
-    ): THREE.Mesh => {
-      const m = box(sx, sy, sz, mat);
-      m.position.set(x, y, z);
-      parent.add(m);
-      return m;
-    };
-
-    // Proportions derive from the shared collider: 1.8 m tall, 0.8 m wide.
-    // Head sits at the crown so the visible head matches HEAD_BOX exactly.
-    this.head = box(HEAD_BOX, HEAD_BOX, HEAD_BOX, this.bodyMat);
-    this.visor = box(HEAD_BOX * 0.82, HEAD_BOX * 0.3, 0.02, this.trimMat);
-    this.torso = box(0.44, 0.56, 0.26, this.bodyMat);
-    this.hips = box(0.38, 0.16, 0.24, this.trimMat);
-    this.armL = box(0.12, 0.5, 0.12, this.trimMat);
-    this.armR = box(0.12, 0.5, 0.12, this.trimMat);
-    this.legL = box(0.15, 0.72, 0.16, this.trimMat);
-    this.legR = box(0.15, 0.72, 0.16, this.trimMat);
-    this.gun = box(0.07, 0.09, 0.44, this.trimMat);
-
-    // Pivot the limbs at the shoulder/hip by offsetting the mesh inside a group
-    // — rotating a centred box would swing it from the middle.
-    this.armL.geometry.translate(0, -0.25, 0);
-    this.armR.geometry.translate(0, -0.25, 0);
-    this.legL.geometry.translate(0, -0.36, 0);
-    this.legR.geometry.translate(0, -0.36, 0);
-
-    // ── Gear ────────────────────────────────────────────────────────────────
-    // Every piece below stays inside the collider envelope the server traces
-    // against. That is the hard constraint on this whole section: geometry that
-    // sticks out past the hitbox produces shots that visibly connect and deal no
-    // damage, which reads as netcode failure rather than as a modelling liberty.
-    // So the helmet lives *within* the head cube and is distinguished by material
-    // and cut, not by being bigger than the head.
-    const H = HEAD_BOX;
-    detail(this.head, H * 1.0, H * 0.5, H * 1.0, this.gearMat, 0, H * 0.24, 0);
-    // Crown plate in team colour — the surface most often seen from above and
-    // across the map, so it is the one that carries the identification.
-    detail(this.head, H * 0.72, H * 0.1, H * 0.78, this.bodyMat, 0, H * 0.46, 0);
-    // Brim over the visor, ear cups either side, mandible below.
-    detail(this.head, H * 0.94, H * 0.1, H * 0.16, this.gearMat, 0, H * 0.08, -H * 0.42);
-    detail(this.head, H * 0.12, H * 0.28, H * 0.34, this.gearMat, H * 0.44, -H * 0.04, 0);
-    detail(this.head, H * 0.12, H * 0.28, H * 0.34, this.gearMat, -H * 0.44, -H * 0.04, 0);
-    detail(this.head, H * 0.54, H * 0.22, H * 0.16, this.gearMat, 0, -H * 0.3, -H * 0.42);
-
-    // Torso: plate carrier over the chest, straps, pouches, shoulders, pack.
-    detail(this.torso, 0.4, 0.3, 0.06, this.bodyMat, 0, 0.06, -0.15);
-    detail(this.torso, 0.05, 0.34, 0.02, this.gearMat, 0.13, 0.1, -0.175);
-    detail(this.torso, 0.05, 0.34, 0.02, this.gearMat, -0.13, 0.1, -0.175);
-    detail(this.torso, 0.09, 0.08, 0.05, this.gearMat, 0.1, -0.15, -0.16);
-    detail(this.torso, 0.09, 0.08, 0.05, this.gearMat, -0.1, -0.15, -0.16);
-    detail(this.torso, 0.34, 0.07, 0.24, this.trimMat, 0, 0.3, 0);
-    detail(this.torso, 0.13, 0.12, 0.22, this.bodyMat, 0.235, 0.2, 0);
-    detail(this.torso, 0.13, 0.12, 0.22, this.bodyMat, -0.235, 0.2, 0);
-    detail(this.torso, 0.36, 0.26, 0.05, this.trimMat, 0, 0.04, 0.145);
-    detail(this.torso, 0.26, 0.28, 0.12, this.gearMat, 0, -0.04, 0.2);
-    detail(this.torso, 0.28, 0.04, 0.13, this.trimMat, 0, 0.08, 0.205);
-
-    // Hips: belt, buckle, thigh rig.
-    detail(this.hips, 0.4, 0.06, 0.26, this.gearMat, 0, 0.02, 0);
-    detail(this.hips, 0.07, 0.05, 0.02, this.bodyMat, 0, 0.02, -0.135);
-    detail(this.hips, 0.1, 0.13, 0.08, this.gearMat, -0.19, -0.07, 0.01);
-
-    // Arms: shoulder cap, elbow pad, wrist band, glove. The cap is team-coloured
-    // because the shoulder is what shows first around a corner.
-    for (const arm of [this.armL, this.armR]) {
-      detail(arm, 0.135, 0.1, 0.135, this.bodyMat, 0, -0.02, 0);
-      detail(arm, 0.13, 0.09, 0.13, this.gearMat, 0, -0.26, 0);
-      detail(arm, 0.135, 0.03, 0.135, this.bodyMat, 0, -0.42, 0);
-      detail(arm, 0.125, 0.11, 0.14, this.gearMat, 0, -0.49, -0.01);
-    }
-
-    // Legs: knee pad, boot, sole.
-    for (const leg of [this.legL, this.legR]) {
-      detail(leg, 0.16, 0.12, 0.045, this.gearMat, 0, -0.36, -0.085);
-      detail(leg, 0.17, 0.15, 0.21, this.gearMat, 0, -0.645, -0.025);
-      detail(leg, 0.18, 0.035, 0.22, this.trimMat, 0, -0.735, -0.025);
-    }
-
-    // Remote weapon: a bar reads as a bar at fifty metres. A magazine under it
-    // and an optic on top give it enough silhouette to be recognisable as a gun.
-    detail(this.gun, 0.05, 0.13, 0.055, this.gearMat, 0, -0.1, 0.05);
-    detail(this.gun, 0.04, 0.045, 0.085, this.gearMat, 0, 0.066, 0.015);
-
-    this.group.add(
-      this.head,
-      this.visor,
-      this.torso,
-      this.hips,
-      this.armL,
-      this.armR,
-      this.legL,
-      this.legR,
-      this.gun,
-    );
+    // The rig *is* this actor's group — not a child of one. A wrapper would add a
+    // transform that `poseDead` would then have to reason about, since the death
+    // collapse rotates the whole body about its feet.
+    const rig = buildCharacter(shadows);
+    this.rig = rig;
+    this.group = rig.group;
+    this.head = rig.head;
+    this.torso = rig.torso;
+    this.hips = rig.hips;
+    this.armL = rig.armL;
+    this.armR = rig.armR;
+    this.legL = rig.legL;
+    this.legR = rig.legR;
+    this.gun = rig.gun;
+    this.bodyMat = rig.bodyMat;
+    this.trimMat = rig.trimMat;
+    this.gearMat = rig.gearMat;
 
     const spriteMat = new THREE.SpriteMaterial({
       transparent: true,
@@ -305,12 +438,7 @@ class Actor {
   }
 
   dispose(): void {
-    this.group.parent?.remove(this.group);
-    for (const g of this.ownedGeo) g.dispose();
-    this.ownedGeo.length = 0;
-    this.bodyMat.dispose();
-    this.trimMat.dispose();
-    this.gearMat.dispose();
+    this.rig.dispose();
     (this.label.material as THREE.SpriteMaterial).dispose();
   }
 
@@ -516,47 +644,47 @@ class Actor {
     // Breathing/idle sway keeps a standing player from looking like a statue.
     const idle = Math.sin(nowLocal * 0.0016) * 0.012;
 
-    const torsoY = (0.86 + idle) * k;
+    const torsoY = (JOINT.torsoY + idle) * k;
     this.torso.position.set(0, torsoY, 0);
     this.torso.scale.set(1, k, 1);
-    this.hips.position.set(0, 0.76 * k, 0);
+    this.hips.position.set(0, JOINT.hipsY * k, 0);
 
     const headY = (height - HEAD_BOX * 0.5) + idle * 0.5;
     this.head.position.set(0, headY, 0);
-    // Head pitch is clamped short of the collider so it never pokes out.
+    // Head pitch is clamped short of the collider so it never pokes out. The visor
+    // is parented to the head, so it comes along for free.
     this.head.rotation.x = Math.max(-0.9, Math.min(0.9, pitch)) * 0.75;
-    this.visor.position.set(0, headY + HEAD_BOX * 0.06, -(HEAD_BOX * 0.5 + 0.012));
-    this.visor.rotation.x = this.head.rotation.x;
 
-    const shoulderY = 1.4 * k;
-    const hipY = 0.78 * k;
+    const shoulderY = JOINT.shoulderY * k;
+    const hipY = JOINT.legHipY * k;
 
-    this.legL.position.set(-0.11, hipY, 0);
-    this.legR.position.set(0.11, hipY, 0);
+    this.legL.position.set(-JOINT.legX, hipY, 0);
+    this.legR.position.set(JOINT.legX, hipY, 0);
     this.legL.rotation.x = swing * amp;
     this.legR.rotation.x = -swing * amp;
     this.legL.scale.set(1, k, 1);
     this.legR.scale.set(1, k, 1);
 
     // The weapon arm stays forward and level; only the free arm swings.
+    //
+    // Signs matter and were wrong here for a long time. The arms hang along -Y and
+    // the character faces -Z, so a *positive* `rotation.x` is what swings a hand
+    // forward (verified against Three.js rather than reasoned about: at +1.15 rad
+    // the glove lands at z = -0.45, in front; at -1.15 it lands at z = +0.45,
+    // behind the player's own back). Every arm angle below therefore reads as
+    // "how far forward", and a bigger number is a hand held higher.
     const ads = (flags & AF.ADS) !== 0;
-    this.armR.position.set(-0.28, shoulderY, 0);
-    this.armR.rotation.x = -1.15 - (ads ? 0.28 : 0) - Math.max(-0.8, Math.min(0.8, pitch)) * 0.5;
-    this.armL.position.set(0.28, shoulderY, 0);
-    this.armL.rotation.x = ads ? -1.0 : -0.35 - swing * amp * 0.85;
+    this.armR.position.set(-JOINT.armX, shoulderY, 0);
+    this.armR.rotation.x = 1.15 + (ads ? 0.28 : 0) + Math.max(-0.8, Math.min(0.8, pitch)) * 0.5;
+    this.armL.position.set(JOINT.armX, shoulderY, 0);
+    // The free arm swings through the gait, so this one legitimately goes negative:
+    // half a stride is an arm travelling behind the hip.
+    this.armL.rotation.x = ads ? 1.0 : 0.35 + swing * amp * 0.85;
     this.armL.scale.set(1, k, 1);
     this.armR.scale.set(1, k, 1);
 
     // Gun rides in front of the right hand, aligned with the view direction.
-    const w = weaponById(this.weapon);
-    const gunLen = Math.max(0.18, w.viz.bodyLen + w.viz.barrelLen);
-    this.gun.scale.set(1, 1, gunLen / 0.44);
-    const reach = 0.34 + gunLen * 0.35;
-    const cp = Math.cos(pitch);
-    const sp = Math.sin(pitch);
-    this.gun.position.set(-0.28, shoulderY - 0.22 + sp * reach, -cp * reach);
-    this.gun.rotation.set(-pitch, 0, 0);
-    this.gun.visible = w.fireMode !== 'melee';
+    poseWeapon(this.rig, this.weapon, pitch, k);
 
     this.label.position.set(0, height + 0.22, 0);
   }
@@ -573,9 +701,9 @@ class Actor {
 
     const fall = ease * (Math.PI * 0.5);
     this.torso.rotation.set(0, 0, 0);
-    this.torso.position.set(0, 0.86, 0);
+    this.torso.position.set(0, JOINT.torsoY, 0);
     this.torso.scale.set(1, 1, 1);
-    this.hips.position.set(0, 0.76, 0);
+    this.hips.position.set(0, JOINT.hipsY, 0);
 
     // Collapse by rotating the group about X — the base stays pinned to the
     // ground so the body never sinks through the floor.
@@ -584,16 +712,14 @@ class Actor {
 
     this.head.position.set(0, PLAYER_HEIGHT - HEAD_BOX * 0.5, 0);
     this.head.rotation.x = 0.25;
-    this.visor.position.set(0, PLAYER_HEIGHT - HEAD_BOX * 0.44, -(HEAD_BOX * 0.5 + 0.012));
-    this.visor.rotation.x = 0.25;
-    this.legL.position.set(-0.11, 0.78, 0);
-    this.legR.position.set(0.11, 0.78, 0);
+    this.legL.position.set(-JOINT.legX, JOINT.legHipY, 0);
+    this.legR.position.set(JOINT.legX, JOINT.legHipY, 0);
     this.legL.rotation.x = -0.2;
     this.legR.rotation.x = 0.12;
     this.legL.scale.set(1, 1, 1);
     this.legR.scale.set(1, 1, 1);
-    this.armL.position.set(0.28, 1.4, 0);
-    this.armR.position.set(-0.28, 1.4, 0);
+    this.armL.position.set(JOINT.armX, JOINT.shoulderY, 0);
+    this.armR.position.set(-JOINT.armX, JOINT.shoulderY, 0);
     this.armL.rotation.x = 0.5;
     this.armR.rotation.x = 0.7;
     this.armL.scale.set(1, 1, 1);

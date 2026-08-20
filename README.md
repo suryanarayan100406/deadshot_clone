@@ -21,9 +21,9 @@ development.
 ## What this is
 
 An original game built to the design conventions of the browser-FPS cohort
-(Krunker, Shell Shockers, 1v1.lol): instant play with no download, a lobby you
-join in one click, bots filling the server until humans arrive, and a match loop
-short enough to finish on a break.
+(Krunker, Shell Shockers, 1v1.lol): instant play with no download, a public match
+you join in one click, bots filling it until humans arrive, a private lobby to
+gather a group in first, and a match loop short enough to finish on a break.
 
 The research behind those conventions is in [`docs/RESEARCH.md`](docs/RESEARCH.md),
 which separates what was **[VERIFIED]** by observation from what is **[DESIGNED]**
@@ -109,19 +109,40 @@ comfortably under 700 bytes.
 
 ## Content
 
-**Five maps, 520 collision brushes, twelve spawn points each.** Every one is
-generated from a compact declarative description of axis-aligned boxes, and the
-renderer and the collision solver read that same array — so the geometry you can
-see and the geometry you can walk into cannot drift apart. Each map is built
-around one argument about how a fight should go:
+**Six maps, 976 collision brushes, 2 432 props, twelve spawn points each.**
+Every one is generated from a compact declarative description of axis-aligned
+boxes, and the renderer and the collision solver read that same array — so the
+geometry you can see and the geometry you can walk into cannot drift apart. Each
+map is built around one argument about how a fight should go:
 
-| Map | Size | Brushes | In rotation | The idea |
-| --- | --- | --- | --- | --- |
-| **Dustworks** | 60 m | 171 | FFA, TDM | Raised centre under a pillar, flanking buildings, catwalks. The all-rounder. |
-| **Foundry** | 48 m | 86 | FFA, TDM | Indoor hall around a furnace that blocks the middle from every side. Distance costs you the centre. |
-| **Overpass** | 68 m | 125 | FFA, TDM | A 44 m road deck on pillars — the long shot, but reachable only from the ends and shootable through a gap in its parapet. |
-| **Meridian** | 64 m | 88 | TDM | Mirror-symmetric, two bases, six spawns behind each. The only map with a direction that means *forward*. |
-| **Cistern** | 40 m | 50 | FFA | A sunken pit inside a raised ring. Built so a fight cannot be declined. |
+| Map | Size | Brushes | Props | In rotation | The idea |
+| --- | --- | --- | --- | --- | --- |
+| **Dustworks** | 76 m | 267 | 597 | FFA, TDM | Raised centre under a pillar, flanking buildings, catwalks. The all-rounder. |
+| **Foundry** | 48 m | 86 | 446 | FFA, TDM | Indoor hall around a furnace that blocks the middle from every side. Distance costs you the centre. |
+| **Overpass** | 68 m | 171 | 182 | FFA, TDM | A 44 m road deck on pillars — the long shot, but reachable only from the ends and shootable through a gap in its parapet. |
+| **Meridian** | 64 m | 134 | 239 | TDM | Mirror-symmetric, two bases, six spawns behind each. The only map with a direction that means *forward*. |
+| **Cistern** | 40 m | 70 | 189 | FFA | A sunken pit inside a raised ring. Built so a fight cannot be declined. |
+| **Refinery** | 92 m | 248 | 779 | FFA, TDM | Two process halls facing each other across a yard, joined by a pipe rack you can walk. A place rather than an arena. |
+
+Nothing in the table is loaded from disk, and that constraint is what shapes all
+six of them. A brush is a box because the brush array *is* the collision
+geometry, and a level of nothing but boxes reads as a pile of boxes however well
+it is laid out — there is no curve anywhere in it. So there is a second array of
+round decoration: pipes, barrels, vessels, domes, flanges, valve wheels, lamps,
+ladder rungs, handrails. It is drawn and almost never collided, which makes it a
+lie waiting to happen — a barrel you take cover behind and die anyway. Four rules
+keep it honest, and every prop on every map is checked against them by the suite:
+it declares its own inscribed collider, or it is flush to a brush, or it is 2.6 m
+clear of anything standable, or it is beyond the perimeter and part of the
+skyline. Forty props on Refinery failed on the first run, every one of them for a
+reason that would have read as a bug in a match.
+
+The other half of not looking like boxes is shading. Vertical faces are split
+into horizontal bands, darkened toward their base and given a bright lip along
+their top edge, all baked into vertex colours at load. The eye locates an edge by
+the shadow under it rather than by the line itself, so this does more for how
+finished a level looks than any other change available without a single byte of
+texture data.
 
 The rotation is per mode, because the difference is not cosmetic. Meridian puts
 all six of a side's spawns behind that side's own base — correct for teams, and
@@ -149,12 +170,12 @@ Damage holds at full to `falloffStart`, ramps down linearly to a floor at
 `falloffEnd`, and never reaches zero.
 
 **Modes.** Free-for-all to 30 kills, team deathmatch to 75, ten-minute time
-limit either way. Bots keep the lobby at eight until real players fill it.
+limit either way. Bots keep a *public* lobby at eight until real players fill it —
+a private one stays empty until its host asks for them.
 
-**Parties.** A party is a named room and nothing else — no lobby screen, no
-invite list, no state to synchronise. Type the same code as your friends and the
+**Parties.** A party is a named room. Type the same code as your friends and the
 server puts you in the same match on the same side; leave the field blank and you
-go wherever there is space. This needed no protocol change at all, because *"I
+go wherever there is space. This needed no protocol change to route, because *"I
 typed a code"* versus *"put me anywhere"* was already expressible as a non-empty
 versus empty `room` field in the join message.
 
@@ -169,6 +190,47 @@ lobby, so a large private group self-balances into a real match instead of a
 firing squad; and because bots keep using plain balance, two friends in a
 six-player match get a bot teammate and an even 3v3 rather than a 2v4.
 
+**The pre-match lobby.** A private room opens in a gathering phase rather than a
+match, because the people in it arrive one at a time and somebody has to still be
+there when the last of them loads. What you see is a staging room: everyone in the
+room standing on a platform in 3D, holding their own weapon, with a nameplate, a
+ready tick and a crown on the host. Seeing the others *as players* is the point of
+it — a list of names does not answer the question anyone asks before a match, which
+is who is here. Server-side it is a phase and not a screen, so everyone really is
+spawned on the map behind it, with the clock pinned and the scoreline wiped the
+moment the round begins; the client just declines pointer lock and zeroes movement
+while the room is open, since a screen with buttons on it cannot also be a mouse
+look.
+
+The room has a host — whoever arrived first, reassigned the instant they leave,
+never a bot, since a bot could not press Start and the lobby would deadlock. Start
+requires the host **and** every human ready. Being the host is permission to begin
+once the room agrees, not permission to speak for it, and nothing else can begin a
+countdown: the old auto-start on a full ready-up is gone, because a match starting
+without anyone choosing to start it was the complaint. Pressing Start again cancels
+the five-second countdown, so a misclick is not a commitment, and consent is
+re-checked every tick rather than only at the press — un-ready with a second left,
+or walk in with two seconds left, and the countdown stops. Without that, a late
+arrival is dragged into a round they never agreed to, which is the same bug wearing
+a different coat. When a party's match ends it returns to its own lobby to pick the
+next thing; a public room rolls straight into the next round, because there is
+nobody there to make a decision.
+
+Bots are the host's switch and default to off, which is the fix for a specific
+complaint: a private room used to fill to eight with bots the moment the first
+friend connected, and there was no way to decline. Turning them off retires the
+ones already there through the same path as an empty room, so it happens while the
+player who asked for it is still looking. Public rooms are untouched — pressing
+PLAY there means *"a game, now"*, and a waiting room would be a worse answer than
+the match already in progress.
+
+Authority for all of it is server-side. `C_LOBBY` carries an action and a value,
+and the room decides whether the sender is allowed to and whether it makes sense
+in the current phase; a client asking to start a match that is already running is
+not an error to report, just nothing. State comes back as its own `S_LOBBY`
+packet rather than four more bytes on the match packet, since most rooms are
+public, never leave the live phase, and would carry them forever.
+
 
 ---
 
@@ -179,8 +241,8 @@ six-player match get a bot teammate and an even 3v3 rather than a 2v4.
 | `npm run dev` | Server and client together, both watching for changes |
 | `npm test` | Both suites below |
 | `npm run test:shared` | Simulation, protocol, maps and weapon tables |
-| `npm run test:server` | Team assignment and room selection, headless |
-| `npm run smoke` | Plays a few seconds against a running server, headless |
+| `npm run test:server` | Rooms, teams, hosts and the lobby, headless |
+| `npm run smoke` | Gathers in a lobby, starts the match and plays, against a running server |
 | `npm run typecheck` | All three workspaces, strict, no emit |
 | `npm run build` | Production client bundle into `packages/client/dist` |
 | `npm start` | Server alone — also serves `dist`, so one process is the game |
@@ -194,12 +256,12 @@ is in.
 
 ## Tests
 
-`npm test` runs 1115 assertions with no test framework — a `check` function, a
+`npm test` runs 1267 assertions with no test framework — a `check` function, a
 seeded RNG, and one file per package. It covers the things that fail *silently*:
 
 **The collision solver.** A 10 000-tick fuzz drives a player through the map on
 seeded pseudo-random input and asserts after every single tick that the player
-box does not overlap any of the 171 brushes and has not escaped the arena. A
+box does not overlap any of the 267 brushes and has not escaped the arena. A
 collision escape has no symptom until someone falls out of the world or shoots
 from inside a wall. Intent changes in bursts rather than per tick, because fresh
 random input at 60 Hz averages out to standing still — and the run asserts its
@@ -230,6 +292,19 @@ The rotation is asserted too, since a map can be fully authored, tested and
 completely unreachable if nothing names it: every map has to appear in a rotation
 or it does not exist as far as a player is concerned.
 
+**Every prop on every map, all 2 432 of them.** Props are round decoration and are
+not collision geometry, which makes each one a potential lie: a barrel you take
+cover behind and get shot through, a crate you try to climb and walk into. So each
+one has to pass on one of four grounds — it carries its own inscribed collider, it
+is flush against a brush that backs it, it is at least 2.6 m clear of the nearest
+surface anyone can stand on, or it is beyond the perimeter wall and part of the
+skyline. The check reports which ground failed and by how much, because that is
+the difference between a two-second fix and an afternoon. Refinery arrived with
+forty violations: pipes overhanging a bund wall by 30 cm, a lamp hung 2.59 m over
+a stair tread when the rule asks 2.60, a ladder standing in open air with nothing
+behind it. Every one of those would have read as a bug in a match and none of them
+is visible in a screenshot.
+
 The melee numbers get their own assertions, because they are a *coupling* that
 nothing at runtime would complain about: the knife's damage, the backstab damage
 and the maximum health live in different places, and the design contract — two
@@ -255,9 +330,9 @@ protocol section would pass while testing nothing.
 
 ### `npm run test:server`
 
-Two server decisions a player feels directly, neither of which the shared suite
-can reach and neither of which the smoke test can see — because the smoke test
-connects one socket, and the entire point of a party is what happens to the
+Three server decisions a player feels directly, none of which the shared suite can
+reach. The smoke test now sees the first socket's half of the lobby, but not these
+— it connects one socket, and the entire point of a party is what happens to the
 *second* one.
 
 **Which side of a team match you land on.** This used to send friends to opposite
@@ -273,6 +348,23 @@ pressed Play; that the same code returns to the same room and the same map; that
 full public lobby overflows into a new one rather than refusing the connection;
 and that the empty-room sweep never deletes a room somebody is playing in.
 
+**Who is in your lobby, and who decided.** That a private room is empty of bots
+until its host asks, that a public one still fills itself, that a guest asking for
+either is ignored, and that turning bots off actually clears the ones already
+there. That the host role is never vacant and never held by a bot. That the
+countdown cancels, that the warm-up scoreline is wiped when the round begins, that
+a full ready-up starts the match but a single player readying alone does not, and
+that the ten minutes are still ahead after four spent waiting.
+
+Two of those read the real packets back through a fake socket rather than
+inspecting the room, which is what caught the roster-flag bug: the scoreboard was
+testing roster entries against the *actor* flag table, where bot is bit 6 instead
+of bit 0, so every test came back false and bots silently stopped being labelled.
+Nothing throws when two flag tables drift apart; the only symptom is a label that
+never appears. The lobby suite also caught a public room that played on while
+still reporting `OVER`, because the shared reset deliberately leaves the phase to
+its three callers and one of them had forgotten it.
+
 Room selection was moved out of `index.ts` to make this possible at all — that
 file opens a socket and starts the tick as import-time side effects, so every
 decision in it was unreachable from a test as long as it stayed there.
@@ -281,12 +373,30 @@ decision in it was unreachable from a test as long as it stayed there.
 
 Unit tests cannot see integration failures: every piece can be individually
 correct while the transport, the room loop or the tick order is wrong. So with a
-server running, `npm run smoke` connects over a real WebSocket and plays for a
-few seconds — joins, holds forward, fires, and asserts from the stream that the
-welcome names it, that snapshots arrive near 20 Hz, that the input acknowledgement
-advances (without it, prediction would replay every input ever sent), that held
-input actually moved it, that other actors are alive and moving, and that firing
-consumed ammunition.
+server running, `npm run smoke` connects over a real WebSocket and plays a room
+from arrival to firefight — 52 assertions read entirely off the stream.
+
+It opens a private room under a freshly generated code, so a second run of the day
+cannot inherit the first run's match, and then walks the lobby: that the room opens
+in `LOBBY` and knows it is a party, that bot fill is *off* and stays off until asked,
+that the first one in is host and is marked as such on the roster, that asking for
+bots fills the room with actors flagged as bots, and that no countdown starts on its
+own. Then it works the consent gate from both sides rather than tiptoeing around it:
+it presses Start while unready and confirms nothing happens — and confirms the press
+was really sent, so the refusal is not vacuous — then readies up, watches
+`LF.CAN_START` appear only *after* that, and presses Start again to get a countdown
+that hands over to a live match. It also proves the two things that make the lobby a
+phase on the server and not only a screen on the client: held input moves the player
+while gathering, and the match clock stands still until the round begins, then runs.
+
+Each step waits for the state that proves the previous one landed, rather than for a
+number of milliseconds someone guessed — so the run is driven by the server's own
+lobby packets, and a step that never lands is a timeout naming the step instead of a
+hang. Once the match is live it re-takes its baselines and plays: that snapshots
+arrive near 20 Hz, that the input acknowledgement advances (without it, prediction
+would replay every input ever sent), that held input moved it, that the round began
+on a full clock, that other actors are alive and moving, and that firing consumed
+ammunition.
 
 It also fires hostile requests at the HTTP surface. That handler runs
 synchronously inside Node's parser, so anything it throws is an uncaught
@@ -353,14 +463,47 @@ hardcoded room name, so every player in the world shared one twelve-slot lobby,
 the overflow path never ran, and the thirteenth connection was refused. Both are
 now pinned by `npm run test:server`.
 
-Typecheck is clean on all three workspaces, both suites are green at 1115
-assertions, and the smoke test passes against a live server. Those confirm the code
-is coherent and self-consistent — they cannot confirm it sounds or looks right. The
-audio rewrite in particular is a claim about what a human ear will hear, and it
+**M3.5 — the lobby.** A private room now gathers before it plays, with a roster,
+an invite link, a host who starts it and a cancellable countdown, and bots off
+unless the host wants them. That last part is the fix for a plain complaint —
+random bots joining a game nobody invited them to — and it was a missing idea
+rather than a broken one: the room filled itself to eight whenever a human was
+present and had no notion of anybody's consent. Public rooms are untouched, since
+pressing PLAY there means *"a game, now"*.
+
+The lobby is a full-screen staging room: a procedural platform, one character rig
+per roster slot standing on it holding that player's own gun, nameplates and ready
+ticks and a host crown overhead. Behind it the server is still simulating the room
+in its lobby phase, which is what avoided inventing a "connected but not in the
+world" state — that would have reached into spawning, snapshots and damage. The
+client simply declines pointer lock and zeroes movement input while the screen is
+up, because a staging room has buttons on it and a locked pointer cannot press
+them.
+
+**M3.6 — the maps as places.** Six maps, 976 brushes and 2 432 props, against a
+plain complaint: blocks with gaps, small, unfinished. Refinery is the answer to
+the "big map of a place" half — 92 m across, two process halls facing each other
+over a yard, a walkable pipe rack crossing it, a tank farm inside a bund and a
+loading dock under a gantry. The other half was that a level made only of boxes
+reads as boxes however it is laid out, which is a rendering problem rather than a
+layout one, so brushes now get baked contact shading and every map got a layer of
+round props on top — with four rules and a suite to stop that layer from lying
+about cover.
+
+Typecheck is clean on all three workspaces, both suites are green at 1267
+assertions, and the smoke test passes 52 checks against a live server. Those confirm
+the code is coherent and self-consistent — they cannot confirm it sounds or looks
+right. The audio rewrite in particular is a claim about what a human ear will hear, and it
 has not been heard: the diagnosis (a 128 ms pitched sweep on a 94 ms cycle,
 stacking into a chord) is specific and testable, but whether the replacement
 actually reads as a gunshot needs someone at a keyboard with the sound on. Same
-for the models, the firing visuals and the game feel — and now for the four new
-maps, whose layouts are argued in their own doc comments and measured against the
-movement constants, but which nobody has actually walked. Remaining milestones
-(M4 meta, M5 polish) are in [`docs/SPEC.md`](docs/SPEC.md) §8.
+for the models, the firing visuals and the game feel — and now for all six maps,
+whose layouts are argued in their own doc comments and measured against the
+movement constants, but which nobody has actually walked. That gap is widest for
+the props and the contact shading, which exist entirely to change how the place
+looks: the suite can prove no prop lies about cover and the vertex counts are
+exact, and neither fact says whether a refinery now reads as a refinery. The
+lobby's server half is covered by the new suites and, over a real socket, by the
+smoke test; its staging room has been compiled but not clicked.
+Remaining milestones (M4 meta, M5 polish) are in
+[`docs/SPEC.md`](docs/SPEC.md) §8.

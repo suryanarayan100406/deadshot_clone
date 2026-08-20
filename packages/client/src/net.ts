@@ -19,6 +19,7 @@
 import {
   ByteReader,
   MSG,
+  decodeLobby,
   decodeMatch,
   decodeRoster,
   decodeSnapshot,
@@ -26,10 +27,12 @@ import {
   encodeChat,
   encodeInputBatch,
   encodeJoin,
+  encodeLobbyCmd,
   encodePing,
   encodeRespawn,
   encodeSwitch,
   type InputCmd,
+  type LobbyMsg,
   type MatchMsg,
   type RosterEntry,
   type Snapshot,
@@ -43,6 +46,7 @@ export interface NetHandlers {
   onSnapshot(s: Snapshot): void;
   onRoster(r: RosterEntry[]): void;
   onMatch(m: MatchMsg): void;
+  onLobby(m: LobbyMsg): void;
   onStatus(status: NetStatus, detail?: string): void;
 }
 
@@ -277,6 +281,11 @@ export class Net {
     this.send(encodeChat(t));
   }
 
+  /** Ask the room to start, toggle bots, or flip our ready flag. */
+  sendLobby(action: number, value = 0): void {
+    this.send(encodeLobbyCmd(action, value));
+  }
+
   /* ── Receive ──────────────────────────────────────────────────────────── */
 
   private onPacket(buf: ArrayBuffer): void {
@@ -319,6 +328,9 @@ export class Net {
         break;
       case MSG.S_MATCH:
         this.handlers.onMatch(decodeMatch(r));
+        break;
+      case MSG.S_LOBBY:
+        this.handlers.onLobby(decodeLobby(r));
         break;
       default:
         // Unknown type from a newer server: ignore rather than desync.

@@ -58,6 +58,7 @@ import {
   BTN,
   DEFAULT_LOADOUT,
   EV,
+  LOBBY_ACT,
   MAPS,
   MAX_HEALTH,
   MAX_PLAYERS,
@@ -88,6 +89,7 @@ import {
   type GameEvent,
   type GameMap,
   type Hitbox,
+  type LobbyMsg,
   type MatchMsg,
   type RosterEntry,
   type Snapshot,
@@ -102,6 +104,7 @@ import { AudioEngine } from './audio';
 import { Effects } from './effects';
 import { Hud } from './hud';
 import { InputManager } from './input';
+import { LobbyScreen } from './lobby';
 import { Menu, type PlayConfig } from './menu';
 import { Net, type NetStatus } from './net';
 import { Predictor } from './predict';
@@ -153,6 +156,7 @@ class Game {
   private net: Net;
   private predictor: Predictor;
   private menu: Menu;
+  private lobby: LobbyScreen;
 
   /* ── Session ──────────────────────────────────────────────────────────── */
 
@@ -278,6 +282,7 @@ class Game {
       onSnapshot: (snap) => this.onSnapshot(snap),
       onRoster: (r) => this.onRoster(r),
       onMatch: (m) => this.onMatch(m),
+      onLobby: (m) => this.onLobby(m),
       onStatus: (st, detail) => this.onStatus(st, detail),
     });
 
@@ -295,6 +300,26 @@ class Game {
       onResume: () => this.resume(),
       onQuit: () => this.quit(),
     });
+
+    this.lobby = new LobbyScreen(
+      {
+        onStart: () => this.net.sendLobby(LOBBY_ACT.START),
+        onBots: (on) => this.net.sendLobby(LOBBY_ACT.BOTS, on ? 1 : 0),
+        onReady: () => this.net.sendLobby(LOBBY_ACT.READY),
+        onLeave: () => this.quit(),
+        // The screen owns no input state; it only says when it is up, and the
+        // pointer lock is decided in one place — here — as it is for chat and the
+        // pause menu. The HUD goes with it: a crosshair floating over the staging
+        // room is the kind of detail that reads as unfinished.
+        onVisibility: (open) => {
+          if (open) this.input.releaseLock();
+          else this.relock();
+          if (this.phase === 'playing') this.hud.setVisible(!open);
+        },
+        onToast: (text, kind) => this.hud.toast(text, kind),
+      },
+      s.shadows > 0,
+    );
 
     this.bindInput();
     this.bindChat();
@@ -331,7 +356,7 @@ class Game {
     // was a whole round-trip ago — this is the reliable path back in.
     this.canvas!.addEventListener('mousedown', () => {
       if (this.phase !== 'playing') return;
-      if (this.menu.anyModalOpen || this.hud.chatOpen) return;
+      if (this.menu.anyModalOpen || this.hud.chatOpen || this.lobby.open) return;
       if (!this.input.locked) this.input.requestLock();
     });
   }
@@ -364,7 +389,11 @@ class Game {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         this.accum = 0;
-        if (this.phase === 'playing' && !this.menu.anyModalOpen) this.menu.openPause();
+        // Not while the lobby is up: the clock is pinned there, so there is
+        // nothing to be away from, and pausing would bury the roster.
+        if (this.phase === 'playing' && !this.menu.anyModalOpen && !this.lobby.open) {
+          this.menu.openPause();
+        }
       } else {
         this.lastFrame = performance.now();
       }
@@ -385,6 +414,7 @@ class Game {
       this.appliedShadows = s.shadows;
       this.world.setShadowQuality(s.shadows);
       this.actors.setShadows(s.shadows > 0);
+      this.lobby.setShadows(s.shadows > 0);
       this.renderer.shadowMap.enabled = s.shadows > 0;
     }
     if (s.fov !== this.appliedFov) {
@@ -409,6 +439,11 @@ class Game {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.viewModel.resize(w / h);
+    // The staging room derives its camera distance from the aspect rather than
+    // just its FOV: a line of twelve people that fits on a desktop runs off both
+    // sides of a phone, and a lobby with its ends cropped is worse than one drawn
+    // small.
+    this.lobby.resize(w / h);
     // CSS pixels, not the drawing buffer: the HUD is DOM laid out over the canvas.
     this.hud.setViewport(w, h);
     // Point sprites are sized in device pixels, so the particle shader needs the
@@ -446,6 +481,11 @@ class Game {
     this.myName = cfg.name;
     this.mode = cfg.mode === 1 ? MODE.TDM : MODE.FFA;
     this.teamMode = this.mode === MODE.TDM;
+    // Cleared rather than carried: joining a party adopts *its* mode, so a code
+    // typed while Team Deathmatch was selected can land in a free-for-all and vice
+    // versa. Leaving last match's team in place would tint this one's players by a
+    // side that no longer exists until the first snapshot corrected it.
+    this.myTeam = TEAM_NONE;
 
     const primary = WEAPON_BY_KEY[cfg.primary] ?? WEAPON_BY_KEY['ranger']!;
     const secondary = WEAPON_BY_KEY[DEFAULT_LOADOUT[1]]!;
@@ -473,6 +513,7 @@ class Game {
 
     this.hud.setSelfId(m.id);
     this.hud.setContext(m.mode, m.room, map.name);
+    this.lobby.setContext(m.mode, map.name, m.room, m.id);
     this.actors.setContext(this.myTeam, this.teamMode);
     this.names.set(m.id, this.myName);
 
@@ -506,16 +547,25 @@ class Game {
     this.menu.hide();
     this.menu.setPlayEnabled(true);
     this.hud.resetTransient();
-    this.hud.setVisible(true);
+    // Not unconditionally visible: the lobby packet arrives before the first
+    // snapshot, so the staging room may already be up, and a crosshair over it
+    // would sit in the middle of somebody's chest.
+    this.hud.setVisible(!this.lobby.open);
     this.hud.setSlots(this.loadout, this.activeSlot);
     this.hud.addSystem(`Joined ${MODE_NAMES[this.mode] ?? 'the match'} · ${this.room}`);
     this.hud.notice(MODE_NAMES[this.mode] ?? 'Match', 'plain', true);
 
-    this.input.requestLock();
+    // `relock`, not `requestLock`: the lobby packet arrives before the first
+    // snapshot, so by the time we get here the staging room may already be up,
+    // and grabbing the pointer would leave its buttons unclickable.
+    this.relock();
   }
 
   private resume(): void {
-    if (this.phase === 'playing') this.input.requestLock();
+    // `relock`, not `requestLock`: Escape works while the staging room is up, so
+    // Resume can be pressed with the lobby behind the pause menu — and taking the
+    // pointer there would leave READY unclickable with no way to get it back.
+    this.relock();
   }
 
   private quit(): void {
@@ -539,6 +589,7 @@ class Game {
     // and chat box, so none of them can survive into the menu.
     this.hud.setVisible(false);
     this.hud.resetTransient();
+    this.lobby.reset();
     this.actors.clear();
     this.effects.clear();
     this.menu.show();
@@ -612,7 +663,7 @@ class Game {
   private onLockChange(locked: boolean): void {
     if (locked) return;
     if (this.phase !== 'playing') return;
-    if (this.menu.anyModalOpen || this.hud.chatOpen) return;
+    if (this.menu.anyModalOpen || this.hud.chatOpen || this.lobby.open) return;
     // The lock went away on its own — a browser Escape, or focus moving off the
     // page. Pause, rather than leaving the player unable to move and unable to
     // see why.
@@ -635,7 +686,11 @@ class Game {
   }
 
   private relock(): void {
-    if (this.phase === 'playing' && !this.menu.anyModalOpen) this.input.requestLock();
+    if (this.phase !== 'playing') return;
+    // The staging room counts as a modal for this purpose: it has buttons on it,
+    // and a locked pointer cannot press them.
+    if (this.menu.anyModalOpen || this.lobby.open) return;
+    this.input.requestLock();
   }
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -757,8 +812,12 @@ class Game {
   private stepFixed(nowLocal: number): void {
     const dead = !this.alive;
     // Movement keys must not leak through a menu, and a lock we do not hold
-    // means keys could be stuck down from before it was lost.
-    const frozen = !this.input.locked || this.hud.chatOpen || this.menu.anyModalOpen;
+    // means keys could be stuck down from before it was lost. The staging room
+    // is in that list for a reason worth stating: the server still simulates you
+    // on the map behind it, so without this you spend the whole lobby walking
+    // around blind and can end up in a wall when it closes.
+    const frozen =
+      !this.input.locked || this.hud.chatOpen || this.menu.anyModalOpen || this.lobby.open;
 
     const wasGround = this.predictor.state.onGround;
     const fallSpeed = Math.max(0, -this.predictor.state.vel.y);
@@ -992,6 +1051,11 @@ class Game {
 
     this.actors.setNames(entries);
     this.hud.setRoster(entries);
+    this.lobby.setRoster(entries);
+  }
+
+  private onLobby(m: LobbyMsg): void {
+    this.lobby.setLobby(m);
   }
 
   private onMatch(m: MatchMsg): void {
@@ -1283,8 +1347,10 @@ class Game {
     this.raf = requestAnimationFrame(this.frame);
 
     // Framerate cap, and a much lower one behind the menu — a gently orbiting
-    // backdrop is not worth a discrete GPU spinning up.
-    const cap = this.phase === 'playing' ? this.settings.get('fpsCap') : MENU_FPS;
+    // backdrop is not worth a discrete GPU spinning up. The staging room is in
+    // the same category: nobody is aiming at anything in there.
+    const cap =
+      this.phase === 'playing' && !this.lobby.open ? this.settings.get('fpsCap') : MENU_FPS;
     if (cap > 0) {
       // A little slack, or a 60 Hz cap on a 60 Hz display aliases to 30.
       if (nowLocal + 0.6 < this.nextRenderAt) return;
@@ -1303,6 +1369,12 @@ class Game {
 
     if (this.phase === 'playing') this.playFrame(dt, nowLocal);
     else this.menuFrame(dt, nowLocal);
+
+    // Posed on top of whichever of those ran. Gated on `lobby.open` rather than
+    // the phase because the phase is `playing` either way — the server has us
+    // spawned in the map the whole time the staging room is up — and there is
+    // only one thing that decides whether the room is on screen.
+    if (this.lobby.open) this.lobby.update(dt, nowLocal);
 
     this.render();
   };
@@ -1501,10 +1573,22 @@ class Game {
    * drawn on top with its own near plane. That is what lets the view model
    * occupy a metre of space in front of the eye without ever clipping into a
    * wall the player is standing against.
+   *
+   * The staging room takes the whole frame instead of either pass. It is a
+   * separate scene and camera drawn by this same renderer — one GL context, one
+   * shader cache, one shadow map — which is why `LobbyStage` owns no renderer of
+   * its own. Nothing of the match is drawn underneath it: the room is opaque,
+   * and a hidden view model behind a wall of geometry is pure cost.
    */
   private render(): void {
     const r = this.renderer;
     r.clear();
+
+    if (this.lobby.open) {
+      r.render(this.lobby.scene, this.lobby.camera);
+      return;
+    }
+
     r.render(this.world.scene, this.camera);
 
     if (this.phase === 'playing' && this.alive && this.settings.get('viewmodel')) {
@@ -1521,6 +1605,7 @@ class Game {
     this.input.dispose();
     this.viewModel.dispose();
     this.effects.dispose();
+    this.lobby.dispose();
     this.world.clear();
     this.renderer.dispose();
   }

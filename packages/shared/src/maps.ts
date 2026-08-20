@@ -18,7 +18,10 @@ export type MatKey =
   | 'rust'
   | 'wood'
   | 'metal'
+  | 'metalDark'
   | 'accent'
+  | 'paint'
+  | 'light'
   | 'glass';
 
 export interface Material {
@@ -36,7 +39,16 @@ export const MATERIALS: Record<MatKey, Material> = {
   rust: { color: 0x8d5b3d, roughness: 0.84, metalness: 0.12 },
   wood: { color: 0x8a6a45, roughness: 0.82, metalness: 0 },
   metal: { color: 0x6e747a, roughness: 0.45, metalness: 0.65 },
+  metalDark: { color: 0x4d5359, roughness: 0.5, metalness: 0.6 },
   accent: { color: 0x3d78b4, roughness: 0.6, metalness: 0.2 },
+  // Red-oxide industrial paint. Every real plant marks its valves, hazards and
+  // handrails in something like this, and a level built from nine desaturated
+  // greys and browns badly needs one saturated colour to look photographed
+  // rather than sculpted. Used sparingly, on details only.
+  paint: { color: 0xb8482f, roughness: 0.7, metalness: 0.05 },
+  // Lamp glass and lit panels. Lambert has no emission, so this is simply a very
+  // pale warm surface — under the sun it reads as a bulb, which is all it has to do.
+  light: { color: 0xffe9b0, roughness: 0.3, metalness: 0 },
   glass: { color: 0x9fc4d8, roughness: 0.15, metalness: 0.1, opacity: 0.35 },
 };
 
@@ -59,12 +71,57 @@ export interface Spawn {
   yaw: number;
 }
 
+/**
+ * The shapes a prop can take. Deliberately five, and deliberately all round:
+ * brushes already cover everything with a flat face, so the only thing a prop is
+ * for is the geometry a box cannot express.
+ */
+export type PropKind = 'cyl' | 'cone' | 'dome' | 'sphere' | 'ring';
+
+/**
+ * A round decoration: pipe, barrel, vessel, dome, flange, valve wheel, lamp.
+ *
+ * Props exist because a level built only from axis-aligned boxes reads as a pile
+ * of blocks no matter how well it is laid out — there is no curve anywhere in it,
+ * and the eye reads "unfinished" long before it reads "arena". So this is a second
+ * array, rendered but *almost* never collided, and the rules about what may go in
+ * it are the whole reason it is safe to have.
+ *
+ * Positioning matches `Brush` exactly: `(x, z)` is the footprint centre and `y` is
+ * the **bottom of the bounding box**, so the two arrays can be authored side by
+ * side without switching conventions mid-line.
+ *
+ * `solid` is the one escape hatch. A solid prop contributes a collision box
+ * *inscribed* in its own silhouette — never circumscribed — so a player can always
+ * walk right up to what they can see and can never be stopped by air. That is the
+ * one direction of error that is not a bug: clipping a few centimetres into a
+ * barrel is invisible, being blocked by nothing is a bug report.
+ */
+export interface Prop {
+  kind: PropKind;
+  /** Footprint centre. */
+  x: number;
+  z: number;
+  /** Bottom of the bounding box, as with `Brush`. */
+  y: number;
+  /** Radius. For `ring`, the radius of the ring itself, not the tube. */
+  r: number;
+  /** Extent along `axis`. Unused by `sphere`; for `ring` this is the tube radius. */
+  len: number;
+  /** Which way the shape's length runs. A `ring` lies in the plane normal to it. */
+  axis: 'x' | 'y' | 'z';
+  mat: MatKey;
+  /** Contributes an inscribed collision box. Only meaningful on `cyl`. */
+  solid?: boolean;
+}
+
 export interface GameMap {
   id: number;
   key: string;
   name: string;
   half: number;
   brushes: Brush[];
+  props: Prop[];
   spawns: Spawn[];
   sky: number;
   fog: number;
@@ -79,6 +136,138 @@ export interface GameMap {
 
 export function brushToBox(b: Brush): Box {
   return boxFrom(b.x, b.y, b.z, b.sx, b.sy, b.sz);
+}
+
+/* ── Prop geometry ───────────────────────────────────────────────────────────
+ *
+ * Three functions, and every consumer goes through them: the renderer places its
+ * instances with `propHalf`, the collider inscribes its box with `propCollider`,
+ * and the test suite bounds them both with `propBox`. Sharing the arithmetic is
+ * the point — a prop drawn in one place and collided in another is exactly the
+ * class of bug the single-array brush design was built to avoid, and reintroducing
+ * it via a second array would be a poor trade for some pipes.
+ */
+
+/** Half-extents of a prop's axis-aligned bounding box. */
+export function propHalf(p: Prop): { hx: number; hy: number; hz: number } {
+  if (p.kind === 'sphere') return { hx: p.r, hy: p.r, hz: p.r };
+  if (p.kind === 'ring') {
+    const o = p.r + p.len; // outer radius: ring plus tube
+    if (p.axis === 'y') return { hx: o, hy: p.len, hz: o };
+    if (p.axis === 'x') return { hx: p.len, hy: o, hz: o };
+    return { hx: o, hy: o, hz: p.len };
+  }
+  // cyl / cone / dome: a radius across, `len` along the axis.
+  const h = p.len / 2;
+  if (p.axis === 'y') return { hx: p.r, hy: h, hz: p.r };
+  if (p.axis === 'x') return { hx: h, hy: p.r, hz: p.r };
+  return { hx: p.r, hy: p.r, hz: h };
+}
+
+/** Bounding box of a prop. Not collision — see `propCollider` for that. */
+export function propBox(p: Prop): Box {
+  const { hx, hy, hz } = propHalf(p);
+  return boxFrom(p.x, p.y, p.z, hx * 2, hy * 2, hz * 2);
+}
+
+/**
+ * The collision box of a solid prop, or `null` for decoration.
+ *
+ * A circle of radius r contains a square of side r√2, and that square is what the
+ * player collides with. The worst-case gap between what is drawn and what is hit
+ * is therefore `r(1 − 1/√2)` ≈ 0.29 r, at the diagonals — 9 cm on a barrel, and
+ * the reason `propPlacementIssue` caps the radius of a solid prop rather than
+ * letting a five-metre tank be built this way.
+ */
+export function propCollider(p: Prop): Box | null {
+  if (!p.solid || p.kind !== 'cyl') return null;
+  const s = p.r * Math.SQRT2;
+  if (p.axis === 'y') return boxFrom(p.x, p.y, p.z, s, p.len, s);
+  // Horizontal: the inscribed square is centred on the axis, which sits one
+  // radius above the bounding box's floor.
+  const y = p.y + p.r - s / 2;
+  if (p.axis === 'x') return boxFrom(p.x, y, p.z, p.len, s, s);
+  return boxFrom(p.x, y, p.z, s, s, p.len);
+}
+
+/** Largest solid-prop radius. See `propCollider` for where 0.47 m comes from. */
+const SOLID_PROP_MAX_R = 1.6;
+/** Clearance a purely decorative prop needs above anything a player can stand on. */
+const PROP_OVERHEAD = 2.6;
+/** How far a prop may stand off the brush backing it before it reads as cover. */
+const PROP_FLUSH = 0.3;
+
+/**
+ * Why this prop is not allowed to be where it is, or `null` if it is fine.
+ *
+ * Props are not collided, so a badly placed one is a lie: the player sees a barrel,
+ * shoots it, and the bullet passes straight through — or worse, hides behind it and
+ * dies. Rather than trusting authors to remember that, every prop on every map has
+ * to satisfy one of four conditions, and the suite walks all of them.
+ *
+ *   1. **Solid.** It declares its own collider, inscribed in its silhouette.
+ *   2. **Backed.** Its bounding box sits inside a brush (or a solid prop),
+ *      allowing a small stand-off for flush detail like conduit and ladders.
+ *   3. **Overhead.** It is high enough above anything standable that a player can
+ *      neither touch it nor mistake it for cover.
+ *   4. **Out of bounds.** It is beyond the perimeter — skyline, not level.
+ */
+export function propPlacementIssue(map: GameMap, p: Prop): string | null {
+  const box = propBox(p);
+
+  if (p.solid) {
+    if (p.kind !== 'cyl') return `a ${p.kind} cannot be solid; only cylinders inscribe cleanly`;
+    if (p.r > SOLID_PROP_MAX_R) return `solid radius ${p.r} exceeds ${SOLID_PROP_MAX_R} m`;
+    return null;
+  }
+
+  // 4. Out of bounds: entirely past the perimeter on some axis.
+  const h = map.half;
+  if (box.maxX <= -h || box.minX >= h || box.maxZ <= -h || box.minZ >= h) return null;
+
+  // 2. Backed by a brush or a solid prop, within the flush tolerance.
+  const inside = (o: Box): boolean =>
+    box.minX >= o.minX - PROP_FLUSH &&
+    box.maxX <= o.maxX + PROP_FLUSH &&
+    box.minY >= o.minY - PROP_FLUSH &&
+    box.maxY <= o.maxY + PROP_FLUSH &&
+    box.minZ >= o.minZ - PROP_FLUSH &&
+    box.maxZ <= o.maxZ + PROP_FLUSH;
+  for (const b of map.brushes) if (inside(brushToBox(b))) return null;
+  // Against a solid prop's *drawn* box rather than its inscribed collider. A hoop
+  // wrapped round a drum is backed by the drum: what rule 2 is really asking is
+  // whether there is solid geometry behind the decoration, and a solid cylinder is
+  // solid geometry — its 0.29 r draw-versus-hit gap is already priced in by
+  // `SOLID_PROP_MAX_R` and does not need charging twice. Tested against the
+  // collider instead, a band on anything wider than 0.96 m would be rejected, which
+  // would ban every vessel worth building.
+  for (const q of map.props) {
+    if (q === p) continue;
+    if (propCollider(q) && inside(propBox(q))) return null;
+  }
+
+  // 3. Overhead: clear of the tallest thing anyone could stand on underneath it.
+  //
+  // Brushes only, deliberately. A solid prop's collider top is incidental rather
+  // than designed — nobody lays out a route across the lids of oil drums — and
+  // counting it would ban the one construction the prop layer exists for: a domed
+  // head sits `0.62 r` proud of the vessel carrying it, which is neither flush
+  // enough for rule 2 nor 2.6 m clear of a top the vessel itself defines. The cost
+  // is that a prop can be within reach of somebody who has climbed on top of a
+  // solid prop, which is a worse place to be standing than it is a bug.
+  let floor = 0;
+  for (const b of map.brushes) {
+    const o = brushToBox(b);
+    if (o.maxX <= box.minX || o.minX >= box.maxX) continue;
+    if (o.maxZ <= box.minZ || o.minZ >= box.maxZ) continue;
+    if (o.maxY > box.minY) continue; // above the prop; not something under it
+    if (o.maxY > floor) floor = o.maxY;
+  }
+  if (box.minY - floor >= PROP_OVERHEAD) return null;
+
+  return `floats in playable space: bottom ${box.minY.toFixed(2)} is only ${(
+    box.minY - floor
+  ).toFixed(2)} m above the surface at ${floor.toFixed(2)}, is not solid, and is not flush to a brush`;
 }
 
 // ── Builder helpers ──────────────────────────────────────────────────────────
@@ -237,105 +426,526 @@ function building(
   wall(out, 'z', x1, z0, z1, ry, 0.9, t, roofMat);
 }
 
+/**
+ * A wall's capping band and pilasters.
+ *
+ * Purely visual, and the cheapest "finished" pass there is. An 8 m perimeter slab
+ * with nothing on it reads as the inside of a box; the same slab with a coping
+ * course along the top and a pier every few metres reads as a wall somebody built.
+ * Both are brushes because they stick out far enough to catch a shot.
+ */
+function trimWall(
+  out: Brush[],
+  axis: 'x' | 'z',
+  fixed: number,
+  from: number,
+  to: number,
+  h: number,
+  thick: number,
+  mat: MatKey,
+  pierEvery = 7,
+): void {
+  const cap = thick + 0.4;
+  if (axis === 'x') br(out, (from + to) / 2, h, fixed, to - from, 0.35, cap, mat);
+  else br(out, fixed, h, (from + to) / 2, cap, 0.35, to - from, mat);
+
+  // Piers, inset from the ends so two perpendicular walls never fight in a corner.
+  const n = Math.max(1, Math.round((to - from) / pierEvery));
+  for (let i = 1; i < n; i++) {
+    const t = from + ((to - from) * i) / n;
+    if (axis === 'x') br(out, t, 0, fixed, 1.1, h, cap, mat);
+    else br(out, fixed, 0, t, cap, h, 1.1, mat);
+  }
+}
+
+// ── Prop builders ────────────────────────────────────────────────────────────
+
+/** Push a prop. `y` is the bottom of its bounding box, as with `br`. */
+function pr(
+  out: Prop[],
+  kind: PropKind,
+  x: number,
+  y: number,
+  z: number,
+  r: number,
+  len: number,
+  mat: MatKey,
+  axis: Prop['axis'] = 'y',
+  solid = false,
+): void {
+  if (r <= 0.001) return;
+  out.push({ kind, x, y, z, r, len, axis, mat, solid });
+}
+
+/**
+ * A horizontal pipe, seated on its **centre line** rather than its underside.
+ *
+ * Pipes are laid out by where their axis runs — that is how a real rack is set
+ * out, and it is the only way two pipes of different bore read as parallel.
+ */
+function pipe(
+  out: Prop[],
+  axis: 'x' | 'z',
+  from: number,
+  to: number,
+  cy: number,
+  other: number,
+  r: number,
+  mat: MatKey,
+): void {
+  const len = to - from;
+  if (len <= 0.01) return;
+  const mid = (from + to) / 2;
+  if (axis === 'x') pr(out, 'cyl', mid, cy - r, other, r, len, mat, 'x');
+  else pr(out, 'cyl', other, cy - r, mid, r, len, mat, 'z');
+}
+
+/** A ring seated on its centre, for flanges and bands wrapped around something. */
+function ringAt(
+  out: Prop[],
+  x: number,
+  cy: number,
+  z: number,
+  r: number,
+  tube: number,
+  mat: MatKey,
+  axis: Prop['axis'],
+): void {
+  const hy = axis === 'y' ? tube : r + tube;
+  pr(out, 'ring', x, cy - hy, z, r, tube, mat, axis);
+}
+
+/** An elbow: two pipes meeting at a right angle, with the corner filled by a sphere. */
+function elbow(
+  out: Prop[],
+  x: number,
+  cy: number,
+  z: number,
+  r: number,
+  mat: MatKey,
+): void {
+  pr(out, 'sphere', x, cy - r, z, r, 0, mat);
+}
+
+/** A 205-litre drum: solid, so it is real cover, with two rolling hoops. */
+function barrel(out: Prop[], x: number, y: number, z: number, mat: MatKey): void {
+  const r = 0.31;
+  const h = 0.9;
+  pr(out, 'cyl', x, y, z, r, h, mat, 'y', true);
+  ringAt(out, x, y + h * 0.28, z, r * 0.99, 0.035, 'metalDark', 'y');
+  ringAt(out, x, y + h * 0.72, z, r * 0.99, 0.035, 'metalDark', 'y');
+}
+
+/** A short solid post. Reads as a bollard, and stops a jump route at knee height. */
+function bollard(out: Prop[], x: number, y: number, z: number, h = 1.0): void {
+  pr(out, 'cyl', x, y, z, 0.14, h, 'paint', 'y', true);
+  pr(out, 'dome', x, y + h, z, 0.14, 0.12, 'paint');
+}
+
+/**
+ * A process column: a solid vertical vessel with a domed head and skirt bands.
+ *
+ * Capped at 1.6 m radius by the solid-prop rule, which is not a compromise — a
+ * fractionating column really is tall and narrow, and a row of them at different
+ * heights is the single most recognisable thing in a refinery skyline.
+ */
+function vessel(
+  out: Prop[],
+  x: number,
+  y: number,
+  z: number,
+  r: number,
+  h: number,
+  mat: MatKey,
+): void {
+  pr(out, 'cyl', x, y, z, r, h, mat, 'y', true);
+  pr(out, 'dome', x, y + h, z, r, r * 0.62, mat);
+  for (let t = 2.2; t < h - 0.6; t += 2.6) ringAt(out, x, y + t, z, r * 1.02, r * 0.07, 'metalDark', 'y');
+}
+
+/** A big storage tank. Skyline only — see `propPlacementIssue` rule 4. */
+function tank(out: Prop[], x: number, y: number, z: number, r: number, h: number, mat: MatKey): void {
+  pr(out, 'cyl', x, y, z, r, h, mat);
+  pr(out, 'dome', x, y + h, z, r, r * 0.34, 'metalDark');
+  for (let t = 1.6; t < h - 0.8; t += 2.4) ringAt(out, x, y + t, z, r * 1.01, 0.09, 'metalDark', 'y');
+  // The spiral stair every tank of this size has, flattened to a ring stack —
+  // legible from the distance it is actually viewed at, and free.
+  for (let t = 0.6; t < h; t += 0.55) ringAt(out, x, y + t, z, r * 1.06, 0.055, 'metal', 'y');
+}
+
+/** A caged ladder flush against a wall face. `face` is the axis it stands off. */
+function ladder(
+  out: Prop[],
+  x: number,
+  y: number,
+  z: number,
+  top: number,
+  face: 'x' | 'z',
+  mat: MatKey = 'metal',
+): void {
+  const h = top - y;
+  if (h <= 0.4) return;
+  const w = 0.24; // half the rail spacing
+  for (const s of [-1, 1] as const) {
+    if (face === 'x') pr(out, 'cyl', x, y, z + w * s, 0.045, h, mat);
+    else pr(out, 'cyl', x + w * s, y, z, 0.045, h, mat);
+  }
+  for (let t = 0.32; t < h; t += 0.32) {
+    if (face === 'x') pr(out, 'cyl', x, y + t - 0.028, z, 0.028, w * 2, mat, 'z');
+    else pr(out, 'cyl', x, y + t - 0.028, z, 0.028, w * 2, mat, 'x');
+  }
+}
+
+/** A lamp hanging under a ceiling or a gantry. `y` is the surface it hangs from. */
+function lamp(out: Prop[], x: number, y: number, z: number, drop = 0.5): void {
+  pr(out, 'cyl', x, y - drop, z, 0.035, drop, 'metalDark');
+  pr(out, 'cone', x, y - drop - 0.34, z, 0.34, 0.34, 'metalDark');
+  pr(out, 'sphere', x, y - drop - 0.4, z, 0.13, 0, 'light');
+}
+
+/**
+ * A guardrail: a solid kick panel that stops a fall, a round top rail, and posts.
+ *
+ * The panel is a brush because walking off a catwalk has to be blocked; the rail
+ * and posts are props because a handrail is round and a box pretending to be one
+ * is precisely what makes the level look unfinished. Painted, because handrails
+ * are the one thing in a plant that is always painted.
+ */
+function guard(
+  bOut: Brush[],
+  pOut: Prop[],
+  axis: 'x' | 'z',
+  fixed: number,
+  from: number,
+  to: number,
+  y: number,
+  panelMat: MatKey,
+): void {
+  const h = 1.0;
+  wall(bOut, axis, fixed, from, to, y, h, 0.12, panelMat);
+  pipe(pOut, axis, from, to, y + h + 0.03, fixed, 0.055, 'paint');
+  const n = Math.max(1, Math.round((to - from) / 2.2));
+  for (let i = 0; i <= n; i++) {
+    const t = from + ((to - from) * i) / n;
+    if (axis === 'x') pr(pOut, 'cyl', t, y, fixed, 0.05, h + 0.03, 'paint');
+    else pr(pOut, 'cyl', fixed, y, t, 0.05, h + 0.03, 'paint');
+  }
+}
+
+/**
+ * A round pillar you can actually take cover behind.
+ *
+ * The trick that makes the whole prop layer worthwhile. A solid cylinder collides
+ * as the square of side `r√2` inscribed in it, so the collider is strictly *inside*
+ * the silhouette: the player sees a round column, and can never be stopped by air,
+ * because every point the collider occupies is somewhere the column visibly is. The
+ * only error is the 0.29 r sliver at each diagonal, which gives cover away rather
+ * than inventing it.
+ *
+ * This was two objects for a while — an inscribed brush with a cylinder drawn over
+ * it — which produced exactly the same collider by a longer road, and cost the cap
+ * bands their backing: a band at `1.06 r` has to reach `0.35 r` past a brush whose
+ * half-width is only `0.71 r`, so anything above about 0.6 m radius failed rule 2
+ * and a colonnade could not be banded at all. One solid cylinder fixes it, because
+ * rule 2 measures decoration against a solid prop's *drawn* box.
+ */
+function roundColumn(
+  out: Prop[],
+  x: number,
+  y: number,
+  z: number,
+  r: number,
+  h: number,
+  mat: MatKey,
+  capMat?: MatKey,
+): void {
+  pr(out, 'cyl', x, y, z, r, h, mat, 'y', true);
+  if (capMat) {
+    ringAt(out, x, y + h - 0.12, z, r * 1.02, r * 0.13, capMat, 'y');
+    ringAt(out, x, y + 0.16, z, r * 1.06, r * 0.15, capMat, 'y');
+  }
+}
+
+/**
+ * A lamp on a post: solid stem, cranked arm, shade, bulb.
+ *
+ * The stem is solid rather than decorative, which costs a 20 cm collision box and
+ * buys the thing being real — you can clip it with a shoulder while strafing and it
+ * behaves the way it looks. Everything above the arm is overhead by rule 3.
+ */
+function lampPost(out: Prop[], x: number, y: number, z: number, h = 4.3, reach = 0.9): void {
+  pr(out, 'cyl', x, y, z, 0.13, h, 'metalDark', 'y', true);
+  ringAt(out, x, y + 0.3, z, 0.2, 0.06, 'metalDark', 'y');
+  // The arm reaches along +x, so a pair either side of a lane both point inward
+  // when the caller flips `reach`.
+  pipe(out, 'x', Math.min(x, x + reach), Math.max(x, x + reach), y + h - 0.06, z, 0.07, 'metalDark');
+  pr(out, 'cone', x + reach, y + h - 0.46, z, 0.3, 0.34, 'metalDark');
+  pr(out, 'sphere', x + reach, y + h - 0.6, z, 0.13, 0, 'light');
+}
+
+/**
+ * A roof truss spanning a hall, plus the tie rods under it.
+ *
+ * Overhead by rule 3, and the reason indoor spaces stop looking like shoeboxes:
+ * a flat ceiling has no scale to it, and a repeated truss gives the eye something
+ * to measure the span against.
+ */
+function truss(
+  out: Prop[],
+  axis: 'x' | 'z',
+  from: number,
+  to: number,
+  cy: number,
+  other: number,
+  mat: MatKey = 'metalDark',
+): void {
+  pipe(out, axis, from, to, cy, other, 0.11, mat);
+  pipe(out, axis, from, to, cy - 0.9, other, 0.08, mat);
+  const n = Math.max(2, Math.round((to - from) / 2.4));
+  for (let i = 0; i <= n; i++) {
+    const t = from + ((to - from) * i) / n;
+    if (axis === 'x') pr(out, 'cyl', t, cy - 0.9, other, 0.05, 0.9, mat);
+    else pr(out, 'cyl', other, cy - 0.9, t, 0.05, 0.9, mat);
+  }
+}
+
 // ── Dustworks ────────────────────────────────────────────────────────────────
 
+/**
+ * A walled desert compound: a raised middle everyone wants, four blockhouses that
+ * overlook it, and a service ring around the outside.
+ *
+ * Grown from 60 m across to 76 m. The version before this one read as a courtyard
+ * with four sheds in it, and the reason was not the size on its own — it was that
+ * everything in it was a box, all of it the same height, with nothing between the
+ * sheds and the wall. The extra 16 m all went into the ring: a colonnade down each
+ * flank, a fuel bund on each diagonal, and a water tower straddling the middle so
+ * the map has a silhouette from anywhere in it.
+ *
+ * The stair runs deserve a note, because the previous ones were wrong. `stairs()`
+ * places the **foot** of the run at the coordinate it is given and ascends *away*
+ * from it, so a flight serving a platform edge has to start `steps × stepD` clear
+ * of that edge and climb toward it. Started at the edge itself — which is what this
+ * map used to do — every step lands inside the platform it is supposed to serve,
+ * and the platform is left unreachable: a 1.8 m lip against a 1.24 m jump.
+ */
 function buildDustworks(): GameMap {
   const b: Brush[] = [];
-  const HALF = 30;
+  const p: Prop[] = [];
+  const HALF = 38;
 
   // Floor, sunk so its top face sits exactly at y = 0.
   br(b, 0, -1, 0, HALF * 2, 1, HALF * 2, 'sand');
 
-  // Perimeter wall.
+  // Perimeter wall, with a coping course and piers so it reads as built masonry
+  // rather than the inside of a box.
   const PW = 8;
-  wall(b, 'x', -HALF + 0.5, -HALF, HALF, 0, PW, 1, 'sandDark');
-  wall(b, 'x', HALF - 0.5, -HALF, HALF, 0, PW, 1, 'sandDark');
-  wall(b, 'z', -HALF + 0.5, -HALF, HALF, 0, PW, 1, 'sandDark');
-  wall(b, 'z', HALF - 0.5, -HALF, HALF, 0, PW, 1, 'sandDark');
+  for (const s of [-1, 1] as const) {
+    wall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'sandDark');
+    wall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'sandDark');
+    trimWall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'sand');
+    trimWall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'sand');
+  }
 
   // ── Centre: raised platform, reachable from all four sides ────────────────
-  const PLAT = 13;
-  const PLAT_H = 1.5;
-  br(b, 0, 0, 0, PLAT, PLAT_H, PLAT, 'concrete');
-  stairs(b, 0, 0, PLAT / 2, 'z-', 5, PLAT_H / 5, 0.42, 4.4, 'concreteDark');
-  stairs(b, 0, 0, -PLAT / 2, 'z+', 5, PLAT_H / 5, 0.42, 4.4, 'concreteDark');
-  stairs(b, PLAT / 2, 0, 0, 'x-', 5, PLAT_H / 5, 0.42, 4.4, 'concreteDark');
-  stairs(b, -PLAT / 2, 0, 0, 'x+', 5, PLAT_H / 5, 0.42, 4.4, 'concreteDark');
+  const PLAT = 16;
+  const PH = 1.8;
+  const PSTEP = 6;
+  br(b, 0, 0, 0, PLAT, PH, PLAT, 'concrete');
+  // Foot of each run set back by steps × depth, ascending toward the platform.
+  const foot = PLAT / 2 + PSTEP * 0.45;
+  stairs(b, 0, 0, foot, 'z-', PSTEP, PH / PSTEP, 0.45, 5, 'concreteDark');
+  stairs(b, 0, 0, -foot, 'z+', PSTEP, PH / PSTEP, 0.45, 5, 'concreteDark');
+  stairs(b, foot, 0, 0, 'x-', PSTEP, PH / PSTEP, 0.45, 5, 'concreteDark');
+  stairs(b, -foot, 0, 0, 'x+', PSTEP, PH / PSTEP, 0.45, 5, 'concreteDark');
 
   // Cover on the platform: a broken ring so it can be fought over.
-  br(b, 0, PLAT_H, 0, 3.4, 2.6, 3.4, 'concreteDark');
-  br(b, -4.4, PLAT_H, -4.4, 2.2, 1.1, 2.2, 'rust');
-  br(b, 4.4, PLAT_H, 4.4, 2.2, 1.1, 2.2, 'rust');
-  br(b, -4.4, PLAT_H, 4.4, 2.2, 1.1, 2.2, 'rust');
-  br(b, 4.4, PLAT_H, -4.4, 2.2, 1.1, 2.2, 'rust');
-
-  // ── Four corner buildings, rotationally symmetric ─────────────────────────
-  const C = 18.5;
-  const BW = 12;
-  const BH = 4.4;
-  building(b, -C, -C, BW, BW, BH, 'concrete', 'concreteDark', { south: true, east: true });
-  building(b, C, -C, BW, BW, BH, 'concrete', 'concreteDark', { south: true, west: true });
-  building(b, -C, C, BW, BW, BH, 'concrete', 'concreteDark', { north: true, east: true });
-  building(b, C, C, BW, BW, BH, 'concrete', 'concreteDark', { north: true, west: true });
-
-  // Stair stacks up the outer face of each building to its roof.
-  const rise = BH + 0.4;
-  const steps = 11;
-  stairs(b, -C, 0, -C - BW / 2 - 0.6, 'z-', steps, rise / steps, 0.5, 3.2, 'wood');
-  stairs(b, C, 0, -C - BW / 2 - 0.6, 'z-', steps, rise / steps, 0.5, 3.2, 'wood');
-  stairs(b, -C, 0, C + BW / 2 + 0.6, 'z+', steps, rise / steps, 0.5, 3.2, 'wood');
-  stairs(b, C, 0, C + BW / 2 + 0.6, 'z+', steps, rise / steps, 0.5, 3.2, 'wood');
-
-  // Interior crate in each building, so the inside isn't an empty box.
+  br(b, 0, PH, 0, 4, 3, 4, 'concreteDark');
   for (const [sx, sz] of CORNERS) {
-    br(b, C * sx + 3 * sx, 0, C * sz + 3 * sz, 2, 1.2, 2, 'wood');
-    br(b, C * sx - 3.5 * sx, 0, C * sz - 3.5 * sz, 1.4, 2.4, 1.4, 'rust');
+    br(b, 4.6 * sx, PH, 4.6 * sz, 2.2, 1.1, 2.2, 'rust');
+    barrel(p, 4.6 * sx, PH, 7.1 * sz, 'paint');
+  }
+
+  // The water tower over the middle. Four solid legs and a tank high enough to be
+  // pure silhouette — it gives the contested ground a landmark visible from every
+  // spawn, which an arena of equal-height boxes never has.
+  const LEG = 6.4;
+  const TANK_Y = PH + 8;
+  for (const [sx, sz] of CORNERS) {
+    pr(p, 'cyl', LEG * sx, PH, LEG * sz, 0.24, 8, 'metalDark', 'y', true);
+  }
+  for (const cy of [5.6, 8.4]) {
+    for (const s of [-1, 1] as const) {
+      pipe(p, 'x', -LEG, LEG, cy, LEG * s, 0.075, 'metalDark');
+      pipe(p, 'z', -LEG, LEG, cy, LEG * s, 0.075, 'metalDark');
+    }
+  }
+  pr(p, 'cyl', 0, TANK_Y, 0, 3.6, 4.2, 'metal');
+  pr(p, 'dome', 0, TANK_Y + 4.2, 0, 3.6, 1.5, 'metal');
+  ringAt(p, 0, TANK_Y + 1.1, 0, 3.66, 0.1, 'metalDark', 'y');
+  ringAt(p, 0, TANK_Y + 3.2, 0, 3.66, 0.1, 'metalDark', 'y');
+  pr(p, 'cyl', 0, TANK_Y + 5.7, 0, 0.09, 2.6, 'metalDark');
+  ladder(p, LEG, PH, LEG, TANK_Y, 'x');
+
+  // ── Four corner blockhouses ───────────────────────────────────────────────
+  const C = 23;
+  const BW = 14;
+  const BH = 5;
+  const ROOF = BH + 0.4;
+  const PARAPET = ROOF + 0.9;
+  for (const [sx, sz] of CORNERS) {
+    building(b, C * sx, C * sz, BW, BW, BH, 'concrete', 'concreteDark', {
+      north: sz > 0,
+      south: sz < 0,
+      east: sx < 0,
+      west: sx > 0,
+    });
+
+    // External stair up the outer face, run to parapet height so the walk onto the
+    // roof is a step over and a 0.9 m drop rather than a blocked climb.
+    const n = 19;
+    const outer = (C + BW / 2 + 0.25) * sz;
+    stairs(b, C * sx, 0, outer + 19 * 0.42 * sz, sz > 0 ? 'z-' : 'z+', n, PARAPET / n, 0.42, 3.4, 'wood');
+
+    // Interior: a crate to break the room up, drums in the corner, a wall lamp.
+    br(b, (C - 4.6) * sx, 0, (C - 4.6) * sz, 2, 1.2, 2, 'wood');
+    br(b, (C + 4.4) * sx, 0, (C + 4.4) * sz, 1.4, 2.4, 1.4, 'rust');
+    barrel(p, (C + 4.6) * sx, 0, (C - 4.2) * sz, 'rust');
+    barrel(p, (C + 5.3) * sx, 0, (C - 4.6) * sz, 'paint');
+    lamp(p, C * sx, BH - 0.05, C * sz, 0.35);
+
+    // Roof furniture. Anything standing on a roof is reachable, so it is either
+    // solid or it is a `roundColumn` — a decorative box on a surface a player can
+    // walk on is the "shot it and nothing happened" bug, and the rules reject it.
+    roundColumn(p, (C - 3.5) * sx, ROOF, (C - 3.5) * sz, 1.0, 1.2, 'metal', 'metalDark');
+    pr(p, 'cyl', (C + 3.8) * sx, ROOF, (C + 3.8) * sz, 0.55, 2.8, 'rust', 'y', true);
+    pr(p, 'dome', (C + 3.8) * sx, ROOF + 2.8, (C + 3.8) * sz, 0.55, 0.4, 'rust');
+    // Conduit along the roof edge, flush to the parapet it runs on. Both ends have
+    // to be mirrored with the building, not just one — a run written `*1` sits on
+    // the correct parapet for two of the four corners and in mid-air for the others.
+    const e0 = (C - BW / 2) * sx;
+    const e1 = (C + BW / 2) * sx;
+    pipe(p, 'x', Math.min(e0, e1), Math.max(e0, e1), ROOF + 0.55, (C + BW / 2 + 0.05) * sz, 0.09, 'metal');
   }
 
   // ── Mid-field cover: four L-walls forming rotational half-cover ────────────
   for (const [sx, sz] of CORNERS) {
-    wall(b, 'x', 11.5 * sz, 2.5 * sx, 10.5 * sx, 0, 2.6, 0.6, 'sandDark');
-    wall(b, 'z', 11.5 * sx, 2.5 * sz, 10.5 * sz, 0, 2.6, 0.6, 'sandDark');
+    wall(b, 'x', 13.5 * sz, 3 * sx, 12 * sx, 0, 2.6, 0.6, 'sandDark');
+    wall(b, 'z', 13.5 * sx, 3 * sz, 12 * sz, 0, 2.6, 0.6, 'sandDark');
+    trimWall(b, 'x', 13.5 * sz, Math.min(3 * sx, 12 * sx), Math.max(3 * sx, 12 * sx), 2.6, 0.6, 'sand', 20);
   }
 
-  // ── Flank lanes along the perimeter, with gaps to shoot through ────────────
+  // ── Colonnades down each flank ────────────────────────────────────────────
+  // The old flank lanes were two walls with a gap between them, which is exactly
+  // what "blocks with gaps" describes. A row of round columns under a roof slab
+  // gives the same lane, the same sightlines through it, and reads as architecture.
+  const COL = 32;
+  const COL_H = 3.8;
   for (const s of [-1, 1] as const) {
-    wall(b, 'x', 26 * s, -12, -3, 0, 2.2, 0.6, 'rust');
-    wall(b, 'x', 26 * s, 3, 12, 0, 2.2, 0.6, 'rust');
-    wall(b, 'z', 26 * s, -12, -3, 0, 2.2, 0.6, 'rust');
-    wall(b, 'z', 26 * s, 3, 12, 0, 2.2, 0.6, 'rust');
+    for (let i = -3; i <= 3; i++) {
+      roundColumn(p, i * 4, 0, COL * s, 0.62, COL_H, 'sandDark', 'sand');
+      roundColumn(p, COL * s, 0, i * 4, 0.62, COL_H, 'sandDark', 'sand');
+    }
+    br(b, 0, COL_H, COL * s, 26.5, 0.5, 3.6, 'sandDark');
+    br(b, COL * s, COL_H, 0, 3.6, 0.5, 26.5, 'sandDark');
+    for (const t of [-8, 0, 8]) {
+      lamp(p, t, COL_H, COL * s, 0.4);
+      lamp(p, COL * s, COL_H, t, 0.4);
+    }
+  }
+
+  // ── Fuel bunds ────────────────────────────────────────────────────────────
+  // One per quadrant, out in the mid-field band rather than on the diagonal: the
+  // blockhouses occupy 16–30 m on *both* axes, so the diagonal at 19 m is inside
+  // one of them, and a bund built there would be a containment wall in somebody's
+  // living room.
+  for (const [sx, sz] of CORNERS) {
+    const bx = 22 * sx;
+    const bz = 9 * sz;
+    // A containment wall you can crouch behind, and three columns inside it.
+    wall(b, 'x', bz - 3.4 * sz, bx - 3.6, bx + 3.6, 0, 1.1, 0.5, 'concreteDark');
+    wall(b, 'z', bx - 3.4 * sx, bz - 3.6, bz + 3.6, 0, 1.1, 0.5, 'concreteDark');
+    vessel(p, bx - 1.6 * sx, 0, bz - 1.6 * sz, 1.02, 8.4, 'metal');
+    vessel(p, bx + 1.7 * sx, 0, bz + 0.4 * sz, 0.8, 6.2, 'rust');
+    vessel(p, bx + 0.2 * sx, 0, bz + 2.3 * sz, 0.65, 4.8, 'metal');
+    ladder(p, bx - 1.6 * sx + 1.0 * sx, 0, bz - 1.6 * sz, 8.4, 'x');
+    // The line out of the bund. It stops short of the colonnade and turns down into
+    // the slab rather than crossing its roof: that roof is standable, and a pipe at
+    // 5.4 m would sit across the chest of anybody up there while stopping nothing —
+    // the exact failure the placement rules exist to catch. The riser is solid, at a
+    // 23 cm collider nobody will ever notice and every player can lean on.
+    const px = 30 * sx;
+    pipe(p, 'x', Math.min(bx, px), Math.max(bx, px), 5.4, bz, 0.16, 'metal');
+    elbow(p, bx, 5.4, bz, 0.2, 'metal');
+    elbow(p, px, 5.4, bz, 0.2, 'metal');
+    pr(p, 'cyl', px, 0, bz, 0.16, 5.24, 'metal', 'y', true);
+    ringAt(p, 26 * sx, 5.4, bz, 0.24, 0.06, 'paint', 'x');
+    bollard(p, bx + 4.6 * sx, 0, bz - 4.6 * sz);
+    bollard(p, bx + 5.8 * sx, 0, bz - 5.8 * sz);
   }
 
   // ── Scattered crates for micro-cover and jump routes ──────────────────────
   const crates: Array<[number, number, number, MatKey]> = [
-    [-9, -20, 1.3, 'wood'],
-    [9, -20, 1.3, 'wood'],
-    [-9, 20, 1.3, 'wood'],
-    [9, 20, 1.3, 'wood'],
-    [-20, -9, 1.3, 'wood'],
-    [20, -9, 1.3, 'wood'],
-    [-20, 9, 1.3, 'wood'],
-    [20, 9, 1.3, 'wood'],
-    [0, -22, 1.7, 'rust'],
-    [0, 22, 1.7, 'rust'],
-    [-22, 0, 1.7, 'rust'],
-    [22, 0, 1.7, 'rust'],
+    [-11, -27, 1.3, 'wood'],
+    [11, -27, 1.3, 'wood'],
+    [-11, 27, 1.3, 'wood'],
+    [11, 27, 1.3, 'wood'],
+    [-27, -11, 1.3, 'wood'],
+    [27, -11, 1.3, 'wood'],
+    [-27, 11, 1.3, 'wood'],
+    [27, 11, 1.3, 'wood'],
+    [0, -25, 1.7, 'rust'],
+    [0, 25, 1.7, 'rust'],
+    [-25, 0, 1.7, 'rust'],
+    [25, 0, 1.7, 'rust'],
   ];
   for (const [x, z, s, m] of crates) {
     br(b, x, 0, z, s, s, s, m);
     // a smaller crate beside each, forming a two-step climb
     br(b, x + s * 0.9, 0, z, s * 0.62, s * 0.62, s * 0.62, m);
+    barrel(p, x - s * 1.1, 0, z + s * 0.6, 'rust');
   }
 
-  // ── Spawns: ringed, facing inward, never facing another spawn directly ────
+  // Lamp posts flanking the four approaches, set off the diagonal so none of them
+  // stands in the middle of a staircase.
+  for (const [sx, sz] of CORNERS) lampPost(p, 11 * sx, 0, 11 * sz, 4.3, -0.9 * sx);
+
+  // ── Skyline beyond the wall ───────────────────────────────────────────────
+  // Only the tops of these are ever visible, which is the point: an 8 m wall with
+  // nothing behind it tells the player the world stops there.
+  tank(p, 52, 0, 9, 9, 17, 'metal');
+  tank(p, 49, 0, -21, 7, 14, 'sandDark');
+  tank(p, -50, 0, 16, 8, 15, 'metal');
+  pr(p, 'cyl', -47, 0, -14, 2.4, 34, 'concrete');
+  pr(p, 'cyl', -47, 34, -14, 2.4, 1.2, 'paint');
+  pr(p, 'cyl', 14, 0, -50, 1.9, 28, 'concrete');
+  pr(p, 'cyl', -18, 0, 51, 2.2, 30, 'concreteDark');
+  for (const [x, z, w, d, h] of [
+    [-56, -44, 16, 14, 13],
+    [58, 34, 20, 16, 11],
+    [30, 56, 14, 12, 15],
+    [-34, -58, 18, 12, 12],
+  ] as const) {
+    br(b, x, -1, z, w, h, d, 'sandDark');
+    br(b, x, h - 1, z, w + 1, 0.6, d + 1, 'sand');
+  }
+
+  // ── Spawns ────────────────────────────────────────────────────────────────
+  // Three per quadrant, rotated four ways: one inside each blockhouse, one in the
+  // service lane behind each colonnade, and one in the outer corner. Hand-placed
+  // rather than swept round a circle, because a circle of this radius cuts through
+  // the blockhouse walls and the colonnades on the way past.
   const spawns: Spawn[] = [];
-  const R = 24.5;
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 + Math.PI / 12;
-    const x = Math.sin(a) * R;
-    const z = Math.cos(a) * R;
-    // face the centre: yaw such that forward (-sin y, 0, -cos y) points at origin
-    spawns.push({ x, y: 0.05, z, yaw: faceCentre(x, z) });
+  for (const [sx, sz] of CORNERS) {
+    for (const [ax, az] of [
+      [C, C],
+      [33.5, 8],
+      [8, 33.5],
+    ] as const) {
+      const x = ax * sx;
+      const z = az * sz;
+      spawns.push({ x, y: 0.05, z, yaw: faceCentre(x, z) });
+    }
   }
 
   return {
@@ -344,11 +954,12 @@ function buildDustworks(): GameMap {
     name: 'Dustworks',
     half: HALF,
     brushes: b,
+    props: p,
     spawns,
     sky: 0x8ab4d8,
     fog: 0xc2d2de,
-    fogNear: 40,
-    fogFar: 145,
+    fogNear: 46,
+    fogFar: 205,
     sun: { x: -0.45, y: 0.82, z: 0.36 },
     sunColor: 0xfff2dc,
     ambientColor: 0xbcd4ea,
@@ -376,6 +987,7 @@ function buildDustworks(): GameMap {
  */
 function buildFoundry(): GameMap {
   const b: Brush[] = [];
+  const p: Prop[] = [];
   const HALF = 24;
 
   br(b, 0, -1, 0, HALF * 2, 1, HALF * 2, 'concreteDark');
@@ -384,10 +996,47 @@ function buildFoundry(): GameMap {
   // rather than a compound wall, and a 10 m wall stops a bunny-hopper reaching
   // the top of it from the catwalks.
   const PW = 10;
-  wall(b, 'x', -HALF + 0.5, -HALF, HALF, 0, PW, 1, 'concrete');
-  wall(b, 'x', HALF - 0.5, -HALF, HALF, 0, PW, 1, 'concrete');
-  wall(b, 'z', -HALF + 0.5, -HALF, HALF, 0, PW, 1, 'concrete');
-  wall(b, 'z', HALF - 0.5, -HALF, HALF, 0, PW, 1, 'concrete');
+  for (const s of [-1, 1] as const) {
+    wall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'concrete');
+    wall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'concrete');
+  }
+
+  // ── The roof structure ────────────────────────────────────────────────────
+  // The single biggest reason the hall used to read as a shoebox: a 10 m wall
+  // with nothing at the top of it gives the eye no way to measure the span. Five
+  // trusses with lamps hung off them fix that, and all of it is 3 m clear of
+  // anything a player can stand on.
+  const TRUSS_Z = [-16, -8, 0, 8, 16] as const;
+  for (const z of TRUSS_Z) truss(p, 'x', -23, 23, 9.2, z);
+  for (const x of [-16, -8, 8, 16]) {
+    for (const z of TRUSS_Z) {
+      // Aligned to the trusses on purpose, so the drop rod meets the chord it is
+      // hanging from instead of ending in air two metres to one side of it.
+      if (Math.abs(x) === 8 && Math.abs(z) === 16) continue;
+      lamp(p, x, 8.6, z, 0.5);
+    }
+  }
+
+  // Service runs down the inside of the shell, three bores to a wall. Against the
+  // wall rather than out in the roof space because a pipe needs something visible
+  // holding it up, and the wall is the one thing in here that is unambiguously
+  // structural — it also makes them flush detail by rule 2 instead of decoration
+  // floating over the walking surface.
+  for (const s of [-1, 1] as const) {
+    for (const [cy, r, mat] of [
+      [5.0, 0.2, 'rust'],
+      [5.7, 0.14, 'metal'],
+      [6.3, 0.1, 'paint'],
+    ] as const) {
+      pipe(p, 'z', -23, 23, cy, 22.95 * s, r, mat);
+      pipe(p, 'x', -23, 23, cy, 22.95 * s, r, mat);
+    }
+    // Flanged joints along the biggest bore, and the elbow turning each corner.
+    for (const t of [-12, 0, 12]) {
+      ringAt(p, 22.95 * s, 5.0, t, 0.27, 0.06, 'paint', 'z');
+      ringAt(p, t, 5.0, 22.95 * s, 0.27, 0.06, 'paint', 'x');
+    }
+  }
 
   // ── The furnace ───────────────────────────────────────────────────────────
   // One solid block, and nothing anywhere touches it that would let you walk up.
@@ -398,6 +1047,14 @@ function buildFoundry(): GameMap {
     // working around the block.
     br(b, 3 * sx, FURN_H, 3 * sz, 1.5, 2.6, 1.5, 'rust');
     br(b, 6.6 * sx, 0, 6.6 * sz, 2.6, 1.2, 2.6, 'rust');
+    // A round stack on each flue, solid so that what stops a bullet is what the
+    // player can see stopping it. Nothing can reach the 7.4 m it starts at — the
+    // furnace roof is 2.6 m below it, twice what a jump clears — so the collider
+    // it contributes is inert, and being inert is not a reason to make it a lie.
+    pr(p, 'cyl', 3 * sx, FURN_H + 2.6, 3 * sz, 0.62, 2.6, 'metalDark', 'y', true);
+    ringAt(p, 3 * sx, FURN_H + 2.9, 3 * sz, 0.68, 0.08, 'rust', 'y');
+    pr(p, 'dome', 3 * sx, FURN_H + 5.2, 3 * sz, 0.62, 0.3, 'metalDark');
+    barrel(p, 6.6 * sx + 1.9 * sx, 0, 6.6 * sz, 'paint');
   }
 
   // Ducting off two faces of the furnace, stepping 2.2 → 3.6. The last 1.2 m to
@@ -419,11 +1076,16 @@ function buildFoundry(): GameMap {
     // Outer railing runs the whole length; the inner one is broken in the middle
     // so the catwalk has a way down onto the furnace side rather than being a
     // corridor with two exits, both of them at the ends.
-    wall(b, 'z', (CAT_X + 1.6) * s, -16, 16, CAT_TOP, 1, 0.15, 'metal');
-    wall(b, 'z', (CAT_X - 1.6) * s, -16, -5, CAT_TOP, 1, 0.15, 'metal');
-    wall(b, 'z', (CAT_X - 1.6) * s, 5, 16, CAT_TOP, 1, 0.15, 'metal');
+    guard(b, p, 'z', (CAT_X + 1.6) * s, -16, 16, CAT_TOP, 'metal');
+    guard(b, p, 'z', (CAT_X - 1.6) * s, -16, -5, CAT_TOP, 'metal');
+    guard(b, p, 'z', (CAT_X - 1.6) * s, 5, 16, CAT_TOP, 'metal');
     stairs(b, CAT_X * s, 0, -22, 'z+', 12, CAT_TOP / 12, 0.5, 3, 'metal');
     stairs(b, CAT_X * s, 0, 22, 'z-', 12, CAT_TOP / 12, 0.5, 3, 'metal');
+    // Columns carrying the outer edge. A catwalk resting on nothing is the single
+    // clearest tell that a level was assembled rather than built.
+    for (const z of [-13, -5, 5, 13]) {
+      roundColumn(p, 14.2 * s, 0, z, 0.4, CAT_TOP - 0.4, 'metalDark', 'metal');
+    }
   }
 
   // ── Floor clutter ─────────────────────────────────────────────────────────
@@ -431,11 +1093,20 @@ function buildFoundry(): GameMap {
     // Presses at the ends of the hall, tall enough to break the shot down the
     // middle of the aisle without blocking the aisle itself.
     br(b, 0, 0, 14 * s, 6, 1.8, 2.4, 'metal');
+    // The roller each press works, solid so it is cover in its own right.
+    pr(p, 'cyl', 0, 1.8, 14 * s, 0.3, 5, 'metal', 'x', true);
+    for (const t of [-1, 1] as const) ringAt(p, 2.5 * t, 2.1, 14 * s, 0.34, 0.06, 'metalDark', 'x');
     // Racking along the side lanes, under the catwalks.
     br(b, 18 * s, 0, 0, 2.4, 3.4, 9, 'rust');
+    // Process columns in the two far bays, with a ladder up the outboard side.
     for (const t of [-1, 1] as const) {
+      vessel(p, 20.5 * s, 0, 13 * t, 1.05, 7.6, 'metal');
+      ladder(p, 21.5 * s, 0, 13 * t, 7.6, 'x');
+      barrel(p, 17.6 * s, 0, (13 + 1.6) * t, 'rust');
+      barrel(p, 17.6 * s, 0, (13 - 1.6) * t, 'paint');
       br(b, 8 * s, 0, 13 * t, 1.8, 1.8, 1.8, 'wood');
       br(b, 8 * s + 1.5 * s, 0, 13 * t, 1.1, 1.1, 1.1, 'wood');
+      bollard(p, 10.6 * s, 0, 13 * t, 0.9);
     }
   }
 
@@ -454,6 +1125,7 @@ function buildFoundry(): GameMap {
     name: 'Foundry',
     half: HALF,
     brushes: b,
+    props: p,
     spawns,
     // Indoors, so the "sky" is only ever glimpsed and the fog closes in fast —
     // which is also what sells the space as enclosed from inside it.
@@ -485,15 +1157,18 @@ function buildFoundry(): GameMap {
  */
 function buildOverpass(): GameMap {
   const b: Brush[] = [];
+  const p: Prop[] = [];
   const HALF = 34;
 
   br(b, 0, -1, 0, HALF * 2, 1, HALF * 2, 'sand');
 
   const PW = 11;
-  wall(b, 'x', -HALF + 0.5, -HALF, HALF, 0, PW, 1, 'sandDark');
-  wall(b, 'x', HALF - 0.5, -HALF, HALF, 0, PW, 1, 'sandDark');
-  wall(b, 'z', -HALF + 0.5, -HALF, HALF, 0, PW, 1, 'sandDark');
-  wall(b, 'z', HALF - 0.5, -HALF, HALF, 0, PW, 1, 'sandDark');
+  for (const s of [-1, 1] as const) {
+    wall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'sandDark');
+    wall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'sandDark');
+    trimWall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'sand');
+    trimWall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'sand');
+  }
 
   // ── The deck ──────────────────────────────────────────────────────────────
   const DECK_Y = 5.5;
@@ -505,14 +1180,34 @@ function buildOverpass(): GameMap {
   // of the map: it is the one place a player on the deck can be shot at from the
   // ground, and the one place they can drop off without walking to an end.
   for (const s of [-1, 1] as const) {
-    wall(b, 'x', 5.5 * s, -DECK_X, -7, DECK_TOP, 1.1, 0.5, 'concreteDark');
-    wall(b, 'x', 5.5 * s, 7, DECK_X, DECK_TOP, 1.1, 0.5, 'concreteDark');
+    for (const [from, to] of [
+      [-DECK_X, -7],
+      [7, DECK_X],
+    ] as const) {
+      wall(b, 'x', 5.5 * s, from, to, DECK_TOP, 1.1, 0.5, 'concreteDark');
+      // The rail capping it. Round, because a concrete kerb with a square top is
+      // the shape nobody has ever built a road bridge out of.
+      pipe(p, 'x', from, to, DECK_TOP + 1.15, 5.5 * s, 0.055, 'paint');
+    }
   }
 
-  // Pillars. Also the cover for whoever is fighting underneath.
-  for (const x of [-18, -9, 0, 9, 18]) {
-    for (const s of [-1, 1] as const) br(b, x, 0, 3.6 * s, 1.8, DECK_Y, 1.8, 'concreteDark');
+  // Pillars — round piers, and the reason to bother: a solid cylinder collides
+  // with the square inscribed in it, so `PILLAR_R = 1.8/√2` hands back the exact
+  // 1.8 m box these used to be while the player sees a pier. Cover is unchanged
+  // to the millimetre; only the silhouette is honest now.
+  const PILLAR_R = 1.8 / Math.SQRT2;
+  const PILLAR_X = [-18, -9, 0, 9, 18] as const;
+  for (const x of PILLAR_X) {
+    for (const s of [-1, 1] as const) {
+      pr(p, 'cyl', x, 0, 3.6 * s, PILLAR_R, DECK_Y, 'concreteDark', 'y', true);
+      ringAt(p, x, DECK_Y - 0.22, 3.6 * s, PILLAR_R * 1.04, 0.16, 'concrete', 'y');
+      ringAt(p, x, 0.42, 3.6 * s, PILLAR_R * 1.06, 0.18, 'concrete', 'y');
+    }
+    // Cross beam tying each pair of piers, tucked under the slab soffit.
+    pipe(p, 'z', -5.5, 5.5, DECK_Y, x, 0.11, 'concreteDark');
   }
+  // Edge beams down the length of the soffit.
+  for (const s of [-1, 1] as const) pipe(p, 'x', -DECK_X, DECK_X, DECK_Y, 5 * s, 0.13, 'concreteDark');
 
   // Ramps at both ends, descending outward from the deck. 18 steps of 0.339 —
   // under the 0.35 step-up, so it is walkable rather than a stack to hop.
@@ -524,6 +1219,10 @@ function buildOverpass(): GameMap {
   // A container across the midpoint, directly under the parapet gap, so the
   // ground fight there has cover of its own.
   br(b, 0, 0, 0, 6, 2.4, 2.6, 'rust');
+  for (const s of [-1, 1] as const) {
+    barrel(p, 3.6 * s, 0, 1.9, 'paint');
+    barrel(p, 3.6 * s, 0, -1.9, 'rust');
+  }
   for (const [sx, sz] of CORNERS) {
     // Flanking buildings with roofs, midway between the deck and the corners.
     building(b, 15 * sx, 20 * sz, 11, 11, 5, 'sandDark', 'concreteDark', {
@@ -535,11 +1234,47 @@ function buildOverpass(): GameMap {
     br(b, 15 * sx, 0, 20 * sz + 3.5 * -sz, 2, 1.2, 2, 'wood');
     br(b, 11 * sx, 0, 8 * sz, 2.2, 1.4, 2.2, 'wood');
     br(b, 26 * sx, 0, 12 * sz, 1.8, 2.6, 1.8, 'rust');
+    // Roof plant, and the conduit along the parapet it sits behind.
+    roundColumn(p, (15 - 3) * sx, 5.4, (20 - 3) * sz, 0.95, 1.1, 'metal', 'metalDark');
+    pr(p, 'cyl', (15 + 3.4) * sx, 5.4, (20 + 3.4) * sz, 0.5, 3.2, 'rust', 'y', true);
+    pr(p, 'dome', (15 + 3.4) * sx, 8.6, (20 + 3.4) * sz, 0.5, 0.34, 'rust');
+    const e0 = (15 - 5.5) * sx;
+    const e1 = (15 + 5.5) * sx;
+    pipe(p, 'x', Math.min(e0, e1), Math.max(e0, e1), 5.95, (20 + 5.5 + 0.05) * sz, 0.09, 'metal');
+    lamp(p, 15 * sx, 4.95, 20 * sz, 0.35);
+    // A tall post on the verge, throwing light across the deck from beside it.
+    lampPost(p, 26 * sx, 0, 8 * sz, 8.5, -0.9 * sx);
   }
   // Low walls along the two side lanes, with a gap at the middle of each.
   for (const s of [-1, 1] as const) {
-    wall(b, 'x', 26 * s, -18, -7, 0, 2.4, 0.6, 'rust');
-    wall(b, 'x', 26 * s, 7, 18, 0, 2.4, 0.6, 'rust');
+    for (const [from, to] of [
+      [-18, -7],
+      [7, 18],
+    ] as const) {
+      wall(b, 'x', 26 * s, from, to, 0, 2.4, 0.6, 'rust');
+      trimWall(b, 'x', 26 * s, from, to, 2.4, 0.6, 'sandDark', 20);
+    }
+  }
+
+  // ── Skyline ───────────────────────────────────────────────────────────────
+  // The road has to come from somewhere and go somewhere. Two abutment blocks
+  // carrying it out past the wall, and a town behind them.
+  for (const s of [-1, 1] as const) {
+    br(b, 40 * s, -1, 0, 18, 7, 13, 'concreteDark');
+    br(b, 40 * s, 6, 0, 19, 0.6, 14, 'concrete');
+    tank(p, 47 * s, 0, 26, 8, 15, 'sandDark');
+  }
+  pr(p, 'cyl', -13, 0, -46, 2.3, 31, 'concrete');
+  pr(p, 'cyl', -13, 31, -46, 2.3, 1.2, 'paint');
+  pr(p, 'cyl', 20, 0, 48, 2, 26, 'concreteDark');
+  for (const [x, z, w, d, h] of [
+    [-52, 40, 18, 15, 14],
+    [50, -42, 22, 16, 12],
+    [8, -52, 16, 13, 17],
+    [-26, 54, 20, 14, 11],
+  ] as const) {
+    br(b, x, -1, z, w, h, d, 'sandDark');
+    br(b, x, h - 1, z, w + 1, 0.6, d + 1, 'sand');
   }
 
   // ── Spawns ────────────────────────────────────────────────────────────────
@@ -562,6 +1297,7 @@ function buildOverpass(): GameMap {
     name: 'Overpass',
     half: HALF,
     brushes: b,
+    props: p,
     spawns,
     // Late afternoon, low sun down the length of the deck. The fog is pushed
     // well out because a map built around a 44 m shot cannot grey out at 40 m.
@@ -594,19 +1330,23 @@ function buildOverpass(): GameMap {
  */
 function buildMeridian(): GameMap {
   const b: Brush[] = [];
+  const p: Prop[] = [];
   const HALF = 32;
 
   br(b, 0, -1, 0, HALF * 2, 1, HALF * 2, 'concrete');
 
   const PW = 10;
-  wall(b, 'x', -HALF + 0.5, -HALF, HALF, 0, PW, 1, 'concreteDark');
-  wall(b, 'x', HALF - 0.5, -HALF, HALF, 0, PW, 1, 'concreteDark');
-  wall(b, 'z', -HALF + 0.5, -HALF, HALF, 0, PW, 1, 'concreteDark');
-  wall(b, 'z', HALF - 0.5, -HALF, HALF, 0, PW, 1, 'concreteDark');
+  for (const s of [-1, 1] as const) {
+    wall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'concreteDark');
+    wall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'concreteDark');
+    trimWall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'concrete');
+    trimWall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'concrete');
+  }
 
   // ── The two bases ─────────────────────────────────────────────────────────
   // Doors on the inward face and both flanks, none at the back: a base is a
   // position to hold, and one that can be entered from behind is not.
+  const ROOF = 5.4;
   for (const s of [-1, 1] as const) {
     building(b, 0, 24 * s, 22, 11, 5, 'concrete', 'accent', {
       north: s > 0,
@@ -618,6 +1358,24 @@ function buildMeridian(): GameMap {
     for (const t of [-1, 1] as const) {
       br(b, 8.5 * t, 0, 27 * s, 2, 2.2, 2, 'rust');
     }
+
+    // Roof plant. A base roof is the one surface here that gets fought over from
+    // below, and a bare slab inside a parapet gives that fight nothing: no sightline
+    // broken, nothing to peek from. A stair head and a vent stack give it both, and
+    // both are solid, so the cover is real. They sit toward the back so the parapet
+    // facing the enemy stays the firing position rather than becoming the only one.
+    const rz = 26.2 * s;
+    roundColumn(p, -6, ROOF, rz, 0.85, 1.5, 'concreteDark', 'accent');
+    pr(p, 'cyl', 6, ROOF, rz, 0.5, 2.8, 'rust', 'y', true);
+    ringAt(p, 6, ROOF + 1.5, rz, 0.56, 0.07, 'metalDark', 'y');
+    pr(p, 'dome', 6, ROOF + 2.8, rz, 0.5, 0.4, 'rust');
+
+    // Conduit along the back parapet, a ladder up the flank clear of the doorway,
+    // and lamps under the roof — the inside of a base was lit by nothing at all and
+    // read as a hole in a wall rather than a room somebody works in.
+    pipe(p, 'x', -11, 11, ROOF + 0.6, (24 + 5.5) * s, 0.09, 'metal');
+    ladder(p, 10.55, 0, 20.6 * s, 5, 'x');
+    for (const x of [-7, 0, 7]) lamp(p, x, 5, 24 * s, 0.35);
   }
 
   // ── The walkway ───────────────────────────────────────────────────────────
@@ -627,9 +1385,13 @@ function buildMeridian(): GameMap {
   const BR_TOP = BR_Y + 0.5;
   br(b, 0, BR_Y, 0, 8, 0.5, 22, 'metal');
   for (const s of [-1, 1] as const) {
-    wall(b, 'z', 4 * s, -11, -3, BR_TOP, 1, 0.2, 'metal');
-    wall(b, 'z', 4 * s, 3, 11, BR_TOP, 1, 0.2, 'metal');
+    guard(b, p, 'z', 4 * s, -11, -3, BR_TOP, 'metal');
+    guard(b, p, 'z', 4 * s, 3, 11, BR_TOP, 'metal');
     stairs(b, 0, 0, 17 * s, `z${s > 0 ? '-' : '+'}`, 12, BR_TOP / 12, 0.5, 5, 'metal');
+    // Piers under the deck edge. A 22 m span floating on nothing was the most
+    // unfinished thing on the map seen from the courtyard, and they cost the ground
+    // route almost nothing: two 0.57 m boxes inside an 8 m gap.
+    for (const z of [0, 8, -8]) roundColumn(p, 3 * s, 0, z, 0.4, BR_Y, 'metalDark', 'metal');
   }
 
   // ── The courtyard ─────────────────────────────────────────────────────────
@@ -637,13 +1399,45 @@ function buildMeridian(): GameMap {
     br(b, 16 * sx, 0, 8 * sz, 6, 2.6, 2.6, 'rust');
     br(b, 24 * sx, 0, 16 * sz, 2.6, 1.5, 2.6, 'wood');
     br(b, 7 * sx, 0, 14 * sz, 2.2, 1.2, 2.2, 'wood');
+    // Drums beside the containers rather than in the lanes, and one on top of a
+    // crate, which is what makes a stack read as stored goods and not as geometry.
+    barrel(p, 19.6 * sx, 0, 8 * sz, 'paint');
+    barrel(p, 19.6 * sx, 0, 9.2 * sz, 'rust');
+    barrel(p, 24 * sx, 1.5, 16 * sz, 'metal');
+    bollard(p, 12 * sx, 0, 3 * sz, 0.9);
   }
   // Under-walkway cover, so crossing the middle at ground level is possible.
   for (const s of [-1, 1] as const) br(b, 0, 0, 6 * s, 3, 1.5, 3, 'rust');
   // Side-lane screens: the flanks are a real route, not an empty margin.
   for (const s of [-1, 1] as const) {
     wall(b, 'z', 22 * s, -6, 6, 0, 2.8, 0.6, 'concreteDark');
+    trimWall(b, 'z', 22 * s, -6, 6, 2.8, 0.6, 'concrete', 20);
     br(b, 28 * s, 0, 0, 2.4, 3.2, 7, 'concreteDark');
+    pipe(p, 'z', -6, 6, 2.3, 22 * s, 0.11, 'rust');
+    pipe(p, 'z', -3.5, 3.5, 2.7, 28 * s, 0.09, 'metal');
+  }
+  // Floodlights on the diagonals, arms cranked inward. Four posts are the whole
+  // difference between a yard somebody lights and a slab with walls round it.
+  for (const [sx, sz] of CORNERS) lampPost(p, 28 * sx, 0, 22 * sz, 8.5, -0.9 * sx);
+
+  // ── Skyline ───────────────────────────────────────────────────────────────
+  // Rule 4 territory: all of it entirely outside the perimeter, so it exists only
+  // to be looked at over the wall. From a base roof the sight line clears a 10 m
+  // parapet at roughly 14 m of height by 60 m out, which is what sets the sizes
+  // below — anything shorter is hidden by the thing it is meant to be seen past.
+  for (const [sx, sz] of CORNERS) {
+    br(b, 46 * sx, 0, 44 * sz, 20, 16, 18, 'concreteDark');
+    br(b, 46 * sx, 16, 44 * sz, 21, 0.6, 19, 'concrete');
+  }
+  tank(p, 40, 0, -46, 6.5, 14, 'metal');
+  tank(p, 52, 0, 6, 5.2, 11, 'metalDark');
+  for (const [x, z, h] of [
+    [-44, -40, 26],
+    [-50, 12, 22],
+    [38, 41, 30],
+  ] as const) {
+    pr(p, 'cyl', x, 0, z, 1.5, h, 'concreteDark');
+    ringAt(p, x, h - 1.2, z, 1.6, 0.12, 'paint', 'y');
   }
 
   // ── Spawns: six per base, all of them behind that base's own front wall ───
@@ -660,6 +1454,7 @@ function buildMeridian(): GameMap {
     name: 'Meridian',
     half: HALF,
     brushes: b,
+    props: p,
     spawns,
     sky: 0x9fb6c4,
     fog: 0xc4d0d6,
@@ -691,15 +1486,27 @@ function buildMeridian(): GameMap {
  */
 function buildCistern(): GameMap {
   const b: Brush[] = [];
+  const p: Prop[] = [];
   const HALF = 20;
 
   br(b, 0, -1, 0, HALF * 2, 1, HALF * 2, 'concreteDark');
 
   const PW = 8;
-  wall(b, 'x', -HALF + 0.5, -HALF, HALF, 0, PW, 1, 'concrete');
-  wall(b, 'x', HALF - 0.5, -HALF, HALF, 0, PW, 1, 'concrete');
-  wall(b, 'z', -HALF + 0.5, -HALF, HALF, 0, PW, 1, 'concrete');
-  wall(b, 'z', HALF - 0.5, -HALF, HALF, 0, PW, 1, 'concrete');
+  for (const s of [-1, 1] as const) {
+    wall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'concrete');
+    wall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'concrete');
+    trimWall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'concreteDark');
+    trimWall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'concreteDark');
+    // Service conduit round the inside of the tank wall, and the inlet each side
+    // discharges through. The stubs are the reason the room reads as plumbing: a
+    // cistern with no way in is a swimming pool.
+    pipe(p, 'z', -13, 13, 6.6, 18.9 * s, 0.13, 'rust');
+    pipe(p, 'x', -13, 13, 6.6, 18.9 * s, 0.13, 'rust');
+    pr(p, 'cyl', 18.6 * s, 4.55, 0, 0.45, 1.8, 'concreteDark', 'x');
+    ringAt(p, 17.9 * s, 5, 0, 0.5, 0.07, 'paint', 'x');
+    pr(p, 'cyl', 0, 4.55, 18.6 * s, 0.45, 1.8, 'concreteDark', 'z');
+    ringAt(p, 0, 5, 17.9 * s, 0.5, 0.07, 'paint', 'z');
+  }
 
   // ── The ring ──────────────────────────────────────────────────────────────
   // 1.6 m up: above the 1.24 m a jump clears, so the ramps are the only way up
@@ -710,11 +1517,13 @@ function buildCistern(): GameMap {
   for (const s of [-1, 1] as const) {
     br(b, 0, 0, 16.25 * s, 38, RING_Y, 5.5, 'concrete');
     br(b, 16.25 * s, 0, 0, 5.5, RING_Y, 27, 'concrete');
-    // Inner parapet, open where the ramp arrives.
-    wall(b, 'x', 13.5 * s, -19, -3, RING_Y, 1, 0.4, 'metal');
-    wall(b, 'x', 13.5 * s, 3, 19, RING_Y, 1, 0.4, 'metal');
-    wall(b, 'z', 13.5 * s, -13.5, -3, RING_Y, 1, 0.4, 'metal');
-    wall(b, 'z', 13.5 * s, 3, 13.5, RING_Y, 1, 0.4, 'metal');
+    // Inner parapet, open where the ramp arrives. A kick panel with a round rail on
+    // top rather than a 0.4 m slab: the slab was the thing you saw from every point
+    // in the pit, and a handrail is the detail that tells you the ring is a walkway.
+    guard(b, p, 'x', 13.5 * s, -19, -3, RING_Y, 'metal');
+    guard(b, p, 'x', 13.5 * s, 3, 19, RING_Y, 'metal');
+    guard(b, p, 'z', 13.5 * s, -13.5, -3, RING_Y, 'metal');
+    guard(b, p, 'z', 13.5 * s, 3, 13.5, RING_Y, 'metal');
     // Ramps down into the middle, one per side.
     stairs(b, 0, 0, 10.5 * s, `z${s > 0 ? '+' : '-'}`, 5, RING_Y / 5, 0.6, 5, 'concreteDark');
     stairs(b, 10.5 * s, 0, 0, `x${s > 0 ? '+' : '-'}`, 5, RING_Y / 5, 0.6, 5, 'concreteDark');
@@ -724,10 +1533,24 @@ function buildCistern(): GameMap {
   br(b, 0, 0, 0, 5, 2.2, 5, 'metal');
   for (const [sx, sz] of CORNERS) {
     // Columns carrying the roof that is not modelled, tall enough to break the
-    // ring's view of the opposite ramp.
-    br(b, 7 * sx, 0, 7 * sz, 1.6, 3.4, 1.6, 'concrete');
+    // ring's view of the opposite ramp. Round, and solid at exactly the radius whose
+    // inscribed square is the 1.6 m box these used to be — so the cover behind them
+    // is unchanged to the millimetre and only the silhouette is different.
+    roundColumn(p, 7 * sx, 0, 7 * sz, 1.6 / Math.SQRT2, 3.4, 'concrete', 'concreteDark');
     br(b, 10 * sx, 0, 5 * sz, 1.8, 1.8, 1.8, 'rust');
     br(b, 4 * sx, 0, 11 * sz, 1.5, 1.1, 1.5, 'wood');
+    barrel(p, 12.2 * sx, 0, 5 * sz, 'paint');
+    barrel(p, 10 * sx, 1.8, 5 * sz, 'rust');
+    bollard(p, 4 * sx, 1.1, 11 * sz, 0.8);
+  }
+
+  // Trusses across the top and the lamps hung off them. Not a slab: a lid would
+  // make the pit feel like the inside of a box, which is the one thing a map this
+  // enclosed cannot afford. A truss gives the space a top edge to read the height
+  // against and leaves the sky doing the lighting.
+  for (const z of [-9, 0, 9]) truss(p, 'x', -13, 13, 7.4, z);
+  for (const x of [-8, 0, 8]) {
+    for (const z of [-9, 0, 9]) lamp(p, x, 6.4, z, 0.4);
   }
 
   // ── Spawns: four on the ring, eight in the middle ─────────────────────────
@@ -755,6 +1578,7 @@ function buildCistern(): GameMap {
     name: 'Cistern',
     half: HALF,
     brushes: b,
+    props: p,
     spawns,
     sky: 0x4d5a63,
     fog: 0x5b6870,
@@ -765,6 +1589,321 @@ function buildCistern(): GameMap {
     ambientColor: 0x8ea8b8,
     ambientGround: 0x4a5256,
     ambientIntensity: 0.72,
+  };
+}
+
+/**
+ * Refinery — the big one.
+ *
+ * The other five levels are arenas: a shape, dressed. This one is a *place*, and
+ * at 92 m across it is more than twice the floor area of anything else here, so it
+ * had to be laid out the way a plant is laid out rather than the way an arena is.
+ * Every zone is something with a job:
+ *
+ *   • **Two process halls**, north and south, 48 m wide with a 9 m roller door
+ *     facing the middle. These are the bases, and the only enclosed volumes on the
+ *     map — the one place a player can reload out of sight of a sniper.
+ *   • **A pipe rack** crossing the whole yard, carried on round columns, with a
+ *     walkway on top and three banks of product line running either side of it.
+ *     This is the map's spine and its signature: from anywhere in the yard the
+ *     silhouette overhead tells you which way you are facing.
+ *   • **A bunded tank farm** on the east, with a platform between the vessels.
+ *   • **A loading dock** on the west, raised 1.2 m — low enough to hop, high
+ *     enough that the containers on it break every sight line across that flank.
+ *
+ * Mirror-symmetric across z, which makes the two halls exact reflections and is a
+ * fairness requirement rather than a preference. Deliberately *not* symmetric
+ * across x: the tank farm and the dock play completely differently, and both bases
+ * look out on both of them, so nobody is advantaged and the map stops reading as a
+ * kaleidoscope. That asymmetry is most of what makes it feel like somewhere real.
+ *
+ * The vertical scheme is three surfaces and one number:
+ *
+ *   yard 0 → catwalk 4.4 → hall roof 5.4
+ *
+ * Stairs get you to the catwalk; the last metre onto a roof is a **jump**, because
+ * 1.0 m is under the 1.24 m a jump clears and over the 0.35 m a player can walk
+ * up. So the roofs are held by whoever commits to the hop, and the parapet is left
+ * open for 6 m at the middle of each hall so there is exactly one place to do it.
+ */
+function buildRefinery(): GameMap {
+  const b: Brush[] = [];
+  const p: Prop[] = [];
+  const HALF = 46;
+
+  br(b, 0, -1, 0, HALF * 2, 1, HALF * 2, 'concrete');
+
+  // Perimeter. Taller than the other maps' at 12 m, because a 92 m yard with an
+  // 8 m wall around it reads as a field with a fence; 12 m reads as a compound.
+  const PW = 12;
+  for (const s of [-1, 1] as const) {
+    wall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'concreteDark');
+    wall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'concreteDark');
+    trimWall(b, 'x', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'concrete', 8);
+    trimWall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, PW, 1, 'concrete', 8);
+  }
+
+  const DECK = 4.0; // catwalk slab bottom; walking surface is 0.4 above
+  const DECK_TOP = DECK + 0.4;
+  const HALL_H = 5.0;
+  const ROOF = HALL_H + 0.4; // hall roof walking surface
+
+  // ── The pipe rack ─────────────────────────────────────────────────────────
+  // A cross, not a single run: the long arm carries the eye from wall to wall, and
+  // the short arm is the route between the two bases that does not involve
+  // crossing the yard at ground level. They overlap at the middle, which is the
+  // one piece of ground worth fighting over on a map this size.
+  br(b, 0, DECK, 0, 80, 0.4, 5, 'metal');
+  br(b, 0, DECK, 0, 5, 0.4, 45, 'metal');
+  for (const s of [-1, 1] as const) {
+    guard(b, p, 'x', 2.5 * s, -40, -2.5, DECK_TOP, 'metal');
+    guard(b, p, 'x', 2.5 * s, 2.5, 40, DECK_TOP, 'metal');
+    guard(b, p, 'z', 2.5 * s, -22.5, -2.5, DECK_TOP, 'metal');
+    guard(b, p, 'z', 2.5 * s, 2.5, 22.5, DECK_TOP, 'metal');
+  }
+  // Columns, topping out exactly at the slab soffit.
+  for (const x of [-36, -24, -12, 12, 24, 36]) roundColumn(p, x, 0, 0, 0.75, DECK, 'concreteDark', 'concrete');
+  for (const z of [-18, -9, 9, 18]) roundColumn(p, 0, 0, z, 0.75, DECK, 'concreteDark', 'concrete');
+
+  // Product lines either side of the walkway, stopped short of the crossing so
+  // nothing runs through the deck a player is standing on. Three gauges rather
+  // than one: a single pipe reads as a handrail, three read as a plant.
+  //
+  // The outer ends stop at 25.4 and not at the bund wall at 26, because the last
+  // 30 cm of a pipe passing 2.5 m over a wall somebody is crouched behind is cover
+  // as far as the eye is concerned. `propPlacementIssue` is right to reject that,
+  // and moving the pipe is a better answer than lowering the wall.
+  for (const s of [-1, 1] as const) {
+    for (const [x0, x1] of [
+      [-25.4, -4],
+      [4, 25.4],
+    ] as const) {
+      pipe(p, 'x', x0, x1, 3.7, 3.6 * s, 0.2, 'metal');
+      pipe(p, 'x', x0, x1, 4.5, 3.6 * s, 0.26, 'rust');
+      pipe(p, 'x', x0, x1, 5.1, 3.6 * s, 0.15, 'paint');
+      // Sleepers under the bank. Solid, so they are honest cover at 23 cm, and
+      // they stop the run reading as three pipes suspended from nothing.
+      for (let x = x0 + 5; x < x1 - 1; x += 11) pr(p, 'cyl', x, 0, 3.6 * s, 0.16, 3.5, 'metalDark', 'y', true);
+    }
+    // Valve stations where the banks pass the crossing.
+    ringAt(p, 24 * s, 4.5, 3.6, 0.34, 0.06, 'paint', 'x');
+    ringAt(p, 24 * s, 4.5, -3.6, 0.34, 0.06, 'paint', 'x');
+    elbow(p, 25.4 * s, 4.5, 3.6 * s, 0.3, 'rust');
+  }
+  // Stairs to the deck, one per quadrant, arriving on the short arm so no flight
+  // ever crosses under the product banks.
+  for (const [sx, sz] of CORNERS) {
+    stairs(b, 9 * sx, 0, 14 * sz, sx > 0 ? 'x-' : 'x+', 13, 0.34, 0.5, 4, 'metal');
+  }
+  for (const x of [-30, -18, -6, 6, 18, 30]) lamp(p, x, DECK, 0, 0.3);
+
+  // ── The two process halls ─────────────────────────────────────────────────
+  for (const s of [-1, 1] as const) {
+    const cz = 33 * s;
+    const zIn = 24 * s; // face toward the middle
+    const zOut = 42 * s;
+    const z0 = Math.min(zIn, zOut);
+    const z1 = Math.max(zIn, zOut);
+    const t = 0.6;
+
+    // Roller door wide enough to fight through, and high enough that the lintel
+    // clears the catwalk that stops just short of it.
+    wall(b, 'x', zIn, -24, 24, 0, HALL_H, t, 'concrete', { at: 0, width: 9, height: 4.2 });
+    wall(b, 'x', zOut, -24, 24, 0, HALL_H, t, 'concrete');
+    wall(b, 'z', -24, z0, z1, 0, HALL_H, t, 'concrete', { at: cz, width: 4, height: 3.2 });
+    wall(b, 'z', 24, z0, z1, 0, HALL_H, t, 'concrete', { at: cz, width: 4, height: 3.2 });
+
+    br(b, 0, HALL_H, cz, 49, 0.4, 19, 'concreteDark');
+    const rIn = 23.5 * s;
+    const rOut = 42.5 * s;
+    const r0 = Math.min(rIn, rOut);
+    const r1 = Math.max(rIn, rOut);
+    // Parapet, open for 6 m where the catwalk hop lands.
+    wall(b, 'x', rIn, -24.5, -3, ROOF, 0.9, 0.5, 'concreteDark');
+    wall(b, 'x', rIn, 3, 24.5, ROOF, 0.9, 0.5, 'concreteDark');
+    wall(b, 'x', rOut, -24.5, 24.5, ROOF, 0.9, 0.5, 'concreteDark');
+    wall(b, 'z', -24.5, r0, r1, ROOF, 0.9, 0.5, 'concreteDark');
+    wall(b, 'z', 24.5, r0, r1, ROOF, 0.9, 0.5, 'concreteDark');
+
+    // Interior mezzanine down one end, and the flight up to it. Puts a shooter
+    // above the door without giving them the roof.
+    const MZ = 2.6;
+    br(b, 19, MZ, cz, 10, 0.4, 12, 'metal');
+    guard(b, p, 'z', 14, Math.min(cz - 6, cz + 6), Math.max(cz - 6, cz + 6), MZ + 0.4, 'metal');
+    stairs(b, 10, 0, cz, 'x+', 9, MZ / 9 + 0.045, 0.5, 4, 'metal');
+
+    // Plant against the outward wall: reactors, drums, the overhead line feeding
+    // them, and the lamps. All of it clear of the door and of the three spawn
+    // points on the open floor.
+    for (const x of [-19, -13]) vessel(p, x, 0, cz + 6.4 * s, 1.5, 4.4, 'metal');
+    vessel(p, 6, 0, cz + 6.4 * s, 1.2, 3.6, 'rust');
+    for (const x of [-22, -16, -10]) barrel(p, x, 0, cz - 7 * s, 'paint');
+    barrel(p, -22, 0.9, cz - 7 * s, 'rust');
+    br(b, 12, 0, cz - 6 * s, 3.2, 1.4, 2.4, 'wood');
+    // Two boxes rather than one 2.2 m block: the low half is the step, the tall
+    // half is the cover, and the split leaves the overhead line 2.8 m clear of
+    // anything standable instead of 1.8.
+    br(b, -4, 0, cz + 7 * s, 2.6, 1.2, 2.6, 'rust');
+    br(b, -4, 1.2, cz + 7.8 * s, 2.6, 1.0, 1.0, 'rust');
+    pipe(p, 'x', -22, 8, 4.2, cz + 6.4 * s, 0.22, 'rust');
+    // Clear of the flight at x 10..14: a lamp is 2.6 m of headroom or it is
+    // something a player on the fourth step walks their face into.
+    for (const x of [-16, -6, 4]) lamp(p, x, HALL_H, cz, 0.4);
+    // On the end wall, not on the mezzanine's own edge: a ladder has to be flush
+    // to something full height or it is a decoration hanging in a doorway.
+    ladder(p, 23.5, 0, cz + 4 * s, MZ + 0.4, 'x');
+
+    // Roof plant. Solid, so every silhouette up there is something to hide behind
+    // rather than something to be surprised by.
+    for (const x of [-14, 14]) {
+      pr(p, 'cyl', x, ROOF, cz, 1.1, 2.8, 'metal', 'y', true);
+      ringAt(p, x, ROOF + 2.8, cz, 1.12, 0.1, 'metalDark', 'y');
+      pr(p, 'dome', x, ROOF + 2.8, cz, 1.1, 0.7, 'metal');
+    }
+    pr(p, 'cyl', 0, ROOF, cz + 6 * s, 0.9, 3.2, 'rust', 'y', true);
+    pr(p, 'cone', 0, ROOF + 3.2, cz + 6 * s, 0.9, 0.9, 'rust');
+
+    // Floodlights on the outward corners, and the perimeter conduit.
+    for (const sx of [-1, 1] as const) lampPost(p, 21 * sx, ROOF + 1.3, cz + 7 * s, 4.6, -0.9 * sx);
+    pipe(p, 'x', -34, 34, 8.4, 44.6 * s, 0.16, 'rust');
+  }
+
+  // ── East: the tank farm ───────────────────────────────────────────────────
+  // A bund is a low wall round a spill, which makes it the most useful shape in
+  // the game: 1.0 m is cover standing and a hop to cross, so the whole quadrant
+  // is fightable without a single piece of geometry taller than a table.
+  for (const s of [-1, 1] as const) {
+    wall(b, 'x', 16 * s, 26, 42, 0, 1.0, 0.6, 'concreteDark');
+    trimWall(b, 'x', 16 * s, 26, 42, 1.0, 0.6, 'concrete', 8);
+  }
+  wall(b, 'z', 42, -16, 16, 0, 1.0, 0.6, 'concreteDark');
+  wall(b, 'z', 26, -16, 16, 0, 1.0, 0.6, 'concreteDark', { at: 0, width: 5, height: 1.0 });
+  for (const s of [-1, 1] as const) {
+    vessel(p, 32, 0, 10 * s, 1.6, 9.5, 'metal');
+    vessel(p, 39, 0, 12 * s, 1.35, 7.0, 'concrete');
+    pipe(p, 'z', 4, 13, 6.2, 32, 0.18, 'rust');
+    ringAt(p, 32, 6.2, 13.4 * s, 0.24, 0.05, 'paint', 'z');
+  }
+  // Platform between them, and the flight up to it.
+  br(b, 34, DECK, 0, 10, 0.4, 5, 'metal');
+  for (const s of [-1, 1] as const) guard(b, p, 'x', 2.5 * s, 29, 39, DECK_TOP, 'metal');
+  guard(b, p, 'z', 39, -2.5, 2.5, DECK_TOP, 'metal');
+  stairs(b, 34, 0, 9, 'z-', 13, 0.34, 0.5, 4, 'metal');
+  for (const x of [30, 38]) lamp(p, x, DECK, 0, 0.3);
+  // 2.8, not 2.4: a vessel's domed head is decoration, and it has to sit 2.6 m
+  // clear of the platform holding the vessel up.
+  vessel(p, 34, DECK_TOP, 0, 0.9, 2.8, 'rust');
+  for (const [sx, sz] of CORNERS) barrel(p, 28.5 + 1.3 * sx, 0, 6 * sz, sx > 0 ? 'rust' : 'paint');
+
+  // ── West: the loading dock ────────────────────────────────────────────────
+  // Two aprons, not one, with a lane between them at ground level where the pipe
+  // rack crosses. The rack's columns then land on ground instead of standing in
+  // the middle of a slab, the lamps under its deck have the 2.6 m they need, and
+  // the dock gains the thing a flat 14x44 platform did not have: a way through it
+  // that is not over it. The 1.2 m lip is the step, and a jump clears 1.24.
+  for (const s of [-1, 1] as const) br(b, -35, 0, 12.75 * s, 14, 1.2, 18.5, 'concrete');
+  for (const s of [-1, 1] as const) trimWall(b, 'x', 22 * s, -42, -28, 1.2, 0.5, 'concreteDark', 7);
+  // Containers. Two heights, adjacent, so the tall ones are cover and the short
+  // ones are the step onto them — a 2.4 m box with nothing beside it is a wall.
+  for (const s of [-1, 1] as const) {
+    br(b, -38, 1.2, 8 * s, 5, 2.4, 6, s > 0 ? 'accent' : 'rust');
+    br(b, -32, 1.2, 8 * s, 5, 1.2, 6, 'paint');
+    br(b, -38, 1.2, 17 * s, 5, 1.2, 5, 'rust');
+    br(b, -31, 1.2, 16 * s, 4, 2.4, 4, 'accent');
+    bollard(p, -27.4, 1.2, 12 * s, 1.0);
+    bollard(p, -27.4, 1.2, 4 * s, 1.0);
+  }
+  // In the lane, not on the apron: at 1.2 m its top is flush with the lip, so it
+  // is the step up as well as the cover down there.
+  br(b, -35, 0, 0, 6, 1.2, 5, 'wood');
+  // Gantry over the dock: solid legs, a truss each way, and the hoist. The cross
+  // rail has to pass over the pipe rack, whose handrail tops out at 5.4, so the
+  // rails sit at 9.1 rather than 7.6 — the bottom chord then clears the rack by
+  // 2.7 m and a container top by 4.5, and the whole thing reads as a yard crane
+  // instead of a pergola.
+  const GANTRY = 9.1;
+  for (const s of [-1, 1] as const) {
+    for (const x of [-41, -29]) pr(p, 'cyl', x, 1.2, 10 * s, 0.28, GANTRY - 1.2, 'metalDark', 'y', true);
+    truss(p, 'x', -41, -29, GANTRY, 10 * s);
+    pr(p, 'cyl', -35, GANTRY - 0.7, 10 * s, 0.22, 1.0, 'paint', 'y', true);
+  }
+  truss(p, 'z', -10, 10, GANTRY, -35);
+  for (const s of [-1, 1] as const) lampPost(p, -26.6, 1.2, 20 * s, 4.6, 0.9);
+
+  // ── The yard ──────────────────────────────────────────────────────────────
+  // Cover in the open ground, kept clear of the band under the product banks so
+  // nothing raises the floor beneath a pipe.
+  for (const [sx, sz] of CORNERS) {
+    br(b, 16 * sx, 0, 9 * sz, 4.5, 1.5, 3, 'wood');
+    br(b, 30 * sx, 0, 22 * sz, 3.5, 2.2, 3.5, 'concreteDark');
+    br(b, 10 * sx, 0, 20 * sz, 3, 1.2, 6, 'rust');
+    br(b, 21 * sx, 0, 30 * sz, 6, 1.8, 3, 'sandDark');
+    barrel(p, 13.6 * sx, 0, 9 * sz, 'rust');
+    barrel(p, 13.6 * sx, 0, 10.4 * sz, 'paint');
+    barrel(p, 16 * sx, 1.5, 9 * sz, 'metal');
+    bollard(p, 6 * sx, 0, 26 * sz, 1.0);
+    roundColumn(p, 27 * sx, 0, 15 * sz, 0.55, 3.2, 'concreteDark', 'paint');
+    lampPost(p, 41 * sx, 0, 33 * sz, 8.5, -0.9 * sx);
+  }
+
+  // ── Beyond the wall ───────────────────────────────────────────────────────
+  // The rest of the plant, which exists purely so the 12 m wall is not the end of
+  // the world. Sized and placed to clear the parapet from a hall roof: from an eye
+  // at 7.1 m the sight line rises about 0.09 per metre, so at 60 m out anything
+  // over ~13 m shows. Everything here is past the perimeter, so none of it is
+  // subject to the placement rules and none of it is ever collided.
+  for (const s of [-1, 1] as const) {
+    tank(p, -6, 0, 64 * s, 7.5, 21, 'metal');
+    tank(p, 16, 0, 58 * s, 5.5, 15, 'metalDark');
+    tank(p, -34, 0, 60 * s, 6.2, 17, 'concrete');
+    // Fractionating column and its flare, the tallest things on the horizon.
+    pr(p, 'cyl', 38, 0, 56 * s, 3.2, 34, 'concrete');
+    for (let y = 6; y < 32; y += 6) ringAt(p, 38, y, 56 * s, 3.4, 0.35, 'metalDark', 'y');
+    pr(p, 'dome', 38, 34, 56 * s, 3.2, 2.4, 'concrete');
+    pr(p, 'cyl', 52, 0, 30 * s, 1.7, 40, 'metalDark');
+    pr(p, 'cone', 52, 40, 30 * s, 1.7, 3.5, 'paint');
+    // A town, so the skyline is not all industry.
+    for (const [i, x] of [-58, -50, 56, 62].entries()) {
+      const h = 14 + ((i * 7) % 11);
+      br(b, x, 0, (52 + i * 6) * s, 18, h, 16, i % 2 ? 'concreteDark' : 'concrete');
+      br(b, x, h, (52 + i * 6) * s, 19, 0.8, 17, 'concrete');
+    }
+  }
+
+  // ── Spawns ────────────────────────────────────────────────────────────────
+  // Four inside each hall and one on each flank per side, so a team holds its own
+  // hall while both teams look out on the dock and the tank farm equally.
+  const spawns: Spawn[] = [];
+  for (const s of [-1, 1] as const) {
+    for (const [x, z] of [
+      [-16, 36],
+      [0, 38],
+      [16, 36],
+      [0, 27],
+    ] as const) {
+      spawns.push({ x, y: 0.05, z: z * s, yaw: faceCentre(x, z * s) });
+    }
+    spawns.push({ x: -35, y: 1.25, z: 20 * s, yaw: faceCentre(-35, 20 * s) });
+    spawns.push({ x: 35, y: 0.05, z: 20 * s, yaw: faceCentre(35, 20 * s) });
+  }
+
+  return {
+    id: 5,
+    key: 'refinery',
+    name: 'Refinery',
+    half: HALF,
+    brushes: b,
+    props: p,
+    spawns,
+    sky: 0x9fb3c4,
+    fog: 0xa9b6bd,
+    fogNear: 34,
+    fogFar: 150,
+    sun: { x: -0.34, y: 0.78, z: 0.52 },
+    sunColor: 0xfff2d6,
+    ambientColor: 0xa8c0d4,
+    ambientGround: 0x6d675c,
+    ambientIntensity: 0.8,
   };
 }
 
@@ -781,6 +1920,7 @@ export const MAPS: readonly GameMap[] = [
   buildOverpass(),
   buildMeridian(),
   buildCistern(),
+  buildRefinery(),
 ];
 
 export function mapById(id: number): GameMap {
@@ -808,8 +1948,8 @@ export function mapByKey(key: string): GameMap | undefined {
  * inserted rather than appended.
  */
 const ROTATION_KEYS: Record<'ffa' | 'tdm', readonly string[]> = {
-  ffa: ['dustworks', 'foundry', 'cistern', 'overpass'],
-  tdm: ['meridian', 'overpass', 'dustworks', 'foundry'],
+  ffa: ['refinery', 'dustworks', 'foundry', 'cistern', 'overpass'],
+  tdm: ['meridian', 'refinery', 'overpass', 'dustworks', 'foundry'],
 };
 
 /** Resolved once at module load, so a typo in a key fails immediately and loudly. */
@@ -845,11 +1985,22 @@ export function pickMap(team: boolean, seed: number): GameMap {
 
 const colliderCache = new WeakMap<GameMap, Box[]>();
 
-/** Collision boxes for a map, built once and reused. */
+/**
+ * Collision boxes for a map, built once and reused.
+ *
+ * Brushes first, then the inscribed box of every solid prop. The order is not
+ * arbitrary: `raycastWorld` returns the nearest hit either way, but `firstOverlap`
+ * stops at the first box it finds, and resolving a player against the wall they are
+ * standing against before the barrel beside it is the cheaper of the two.
+ */
 export function mapColliders(m: GameMap): Box[] {
   let c = colliderCache.get(m);
   if (!c) {
     c = m.brushes.map(brushToBox);
+    for (const p of m.props) {
+      const box = propCollider(p);
+      if (box) c.push(box);
+    }
     colliderCache.set(m, c);
   }
   return c;

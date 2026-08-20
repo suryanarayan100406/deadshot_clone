@@ -5,7 +5,7 @@
  * brush list — the exact same array the collision code raycasts against. There
  * is no separate visual mesh, so what you see is what you hit, always.
  *
- * Two things make this cheap enough to run at 144 fps on integrated graphics:
+ * Three things make this cheap enough to run at 144 fps on integrated graphics:
  *
  *   • **One merged mesh per material.** A map of ~450 brushes across 9 materials
  *     becomes 9 draw calls instead of 450, by baking every box into a single
@@ -16,6 +16,12 @@
  *     as plastic. Each face gets a small deterministic brightness offset derived
  *     from its world position, which reads as surface variation and makes edges
  *     legible without a single byte of texture data.
+ *
+ *   • **Baked contact shading.** Vertical faces are split into a few horizontal
+ *     bands and darkened toward their base, with a bright lip along their top.
+ *     Nothing else available without textures does as much work: the eye finds an
+ *     edge by the shadow under it rather than by the line itself, so this is what
+ *     stops a level of untextured boxes reading as a pile of boxes.
  *
  * Nothing here is loaded from disk. The sky, the ground, the sun and the whole
  * level are generated at startup in a few milliseconds.
@@ -28,6 +34,7 @@ import {
   type GameMap,
   type MatKey,
 } from '@oneshot/shared';
+import { buildProps } from './props';
 
 /** Deterministic hash → [0,1). Same input always gives the same tint. */
 function hash01(x: number, y: number, z: number, salt: number): number {
@@ -50,18 +57,91 @@ const FACES: Array<{ n: [number, number, number]; u: [number, number, number]; v
 ];
 
 /**
+ * How far a contact shadow rises up a vertical face, in metres, and how tall the
+ * bright lip along its top is.
+ *
+ * Both get clamped to a fraction of the brush's own height below, because a fixed
+ * band is wrong at small sizes: a 35 cm coping course darkened over its bottom
+ * 60 cm is not a shadow under a coping, it is a black stripe where a coping was.
+ */
+const CONTACT_BAND = 0.6;
+const EDGE_BAND = 0.16;
+
+/**
+ * Brightness multiplier for a vertex at world height `wy` on a vertical face
+ * spanning `y0`..`y1`.
+ *
+ * Squared falloff on the way down, so the darkening hugs the base rather than
+ * washing out the whole lower half of a wall — the shape a real contact shadow
+ * has. A brighter lip along the top edge does the opposite job: it separates a
+ * wall from whatever is behind it at a distance, where the silhouette is all the
+ * information there is.
+ */
+function contactShade(wy: number, y0: number, y1: number, band: number, lip: number): number {
+  let m = 1;
+  const dBot = wy - y0;
+  if (dBot < band) {
+    const t = 1 - dBot / band;
+    m *= 1 - 0.36 * t * t;
+  }
+  const dTop = y1 - wy;
+  if (dTop < lip) m *= 1 + 0.18 * (1 - dTop / lip);
+  return m;
+}
+
+/**
+ * The horizontal band boundaries of a vertical face, ascending.
+ *
+ * Three quads at most, and only where they buy something: one boundary at the top
+ * of the contact band, one at the bottom of the lip. Interpolating the gradient
+ * across a single tall quad instead would smear a 60 cm shadow over 12 m of wall,
+ * and fixing that with evenly spaced rows would multiply the vertex count for
+ * bands whose shade is constant anyway.
+ */
+function faceBands(y0: number, y1: number, band: number, lip: number, out: number[]): void {
+  out.length = 0;
+  out.push(y0);
+  const h = y1 - y0;
+  if (h > band * 1.8) out.push(y0 + band);
+  if (h > lip * 4) out.push(y1 - lip);
+  out.push(y1);
+}
+
+/** Contact band and top lip for a brush of height `sy`. */
+function brushBands(sy: number): [number, number] {
+  return [Math.min(CONTACT_BAND, sy * 0.45), Math.min(EDGE_BAND, sy * 0.25)];
+}
+
+/**
  * Builds one merged, vertex-coloured geometry from a set of brushes.
  *
  * Faces are emitted manually rather than via BoxGeometry so each face can carry
- * its own tint and so we can skip the underside of anything sitting on the
- * ground — those triangles are never visible and cost fill rate on every frame.
+ * its own tint and its own vertical gradient, and so we can skip the underside of
+ * anything sitting on the ground — those triangles are never visible and cost
+ * fill rate on every frame.
  */
 function mergeBrushes(brushes: readonly Brush[], baseColor: number): THREE.BufferGeometry {
-  // Worst case 6 faces × 4 verts; the underside skip only ever shrinks this.
-  const maxVerts = brushes.length * 24;
-  const positions = new Float32Array(maxVerts * 3);
-  const normals = new Float32Array(maxVerts * 3);
-  const colors = new Float32Array(maxVerts * 3);
+  const rows: number[] = [];
+
+  // Exact vertex count first. A vertical face is now 1–3 quads depending on how
+  // much room its height leaves for a contact band and a lip, so the old "6 faces
+  // × 4 verts" bound no longer holds, and guessing high would mean allocating
+  // several times the buffer a map actually needs.
+  let total = 0;
+  for (const b of brushes) {
+    const [band, lip] = brushBands(b.sy);
+    faceBands(b.y, b.y + b.sy, band, lip, rows);
+    const quads = rows.length - 1;
+    for (let f = 0; f < 6; f++) {
+      const ny = FACES[f]!.n[1];
+      if (ny < 0 && b.y <= 0.001) continue;
+      total += (ny !== 0 ? 1 : quads) * 4;
+    }
+  }
+
+  const positions = new Float32Array(total * 3);
+  const normals = new Float32Array(total * 3);
+  const colors = new Float32Array(total * 3);
   const indices: number[] = [];
 
   const base = new THREE.Color(baseColor);
@@ -74,6 +154,10 @@ function mergeBrushes(brushes: readonly Brush[], baseColor: number): THREE.Buffe
     const cx = b.x;
     const cy = b.y + hy;
     const cz = b.z;
+    const y0 = b.y;
+    const y1 = b.y + b.sy;
+    const [band, lip] = brushBands(b.sy);
+    faceBands(y0, y1, band, lip, rows);
 
     // Per-brush tint so two identical crates never look stamped from a mould.
     const brushTint = 1 + (hash01(Math.round(b.x * 4), Math.round(b.y * 4), Math.round(b.z * 4), 0x9e37) - 0.5) * 0.13;
@@ -107,28 +191,57 @@ function mergeBrushes(brushes: readonly Brush[], baseColor: number): THREE.Buffe
         brushTint *
         (1 + (hash01(Math.round(cx * 8 + ex * 3), Math.round(cy * 8 + ey * 3), Math.round(cz * 8 + ez * 3), f * 7919) - 0.5) * 0.075);
 
-      const r = base.r * faceTint;
-      const g = base.g * faceTint;
-      const bl = base.b * faceTint;
-
-      const start = vi;
-      for (let c = 0; c < 4; c++) {
-        // Corner order 0..3 walks the quad so (0,1,2)+(0,2,3) wind correctly.
-        const cu = c === 0 || c === 3 ? -1 : 1;
-        const cv = c < 2 ? -1 : 1;
-        const p = vi * 3;
-        positions[p] = cx + ex + ux * su * cu + vx * sv * cv;
-        positions[p + 1] = cy + ey + uy * su * cu + vy * sv * cv;
-        positions[p + 2] = cz + ez + uz * su * cu + vz * sv * cv;
-        normals[p] = nx;
-        normals[p + 1] = ny;
-        normals[p + 2] = nz;
-        colors[p] = r;
-        colors[p + 1] = g;
-        colors[p + 2] = bl;
-        vi++;
+      if (ny !== 0) {
+        // Horizontal face: one quad, and no gradient to bake into it.
+        const r = base.r * faceTint;
+        const g = base.g * faceTint;
+        const bl = base.b * faceTint;
+        const start = vi;
+        for (let c = 0; c < 4; c++) {
+          // Corner order 0..3 walks the quad so (0,1,2)+(0,2,3) wind correctly.
+          const cu = c === 0 || c === 3 ? -1 : 1;
+          const cv = c < 2 ? -1 : 1;
+          const q = vi * 3;
+          positions[q] = cx + ex + ux * su * cu + vx * sv * cv;
+          positions[q + 1] = cy + ey + uy * su * cu + vy * sv * cv;
+          positions[q + 2] = cz + ez + uz * su * cu + vz * sv * cv;
+          normals[q] = nx;
+          normals[q + 1] = ny;
+          normals[q + 2] = nz;
+          colors[q] = r;
+          colors[q + 1] = g;
+          colors[q + 2] = bl;
+          vi++;
+        }
+        indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+        continue;
       }
-      indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+
+      // Vertical face. Its in-plane v axis is world up for all four of them (see
+      // FACES), so a band is just a pair of heights and each corner takes the
+      // gradient at its own.
+      for (let r0 = 0; r0 < rows.length - 1; r0++) {
+        const yLo = rows[r0]!;
+        const yHi = rows[r0 + 1]!;
+        const start = vi;
+        for (let c = 0; c < 4; c++) {
+          const cu = c === 0 || c === 3 ? -1 : 1;
+          const wy = c < 2 ? yLo : yHi;
+          const t = faceTint * contactShade(wy, y0, y1, band, lip);
+          const q = vi * 3;
+          positions[q] = cx + ex + ux * su * cu;
+          positions[q + 1] = wy;
+          positions[q + 2] = cz + ez + uz * su * cu;
+          normals[q] = nx;
+          normals[q + 1] = 0;
+          normals[q + 2] = nz;
+          colors[q] = base.r * t;
+          colors[q + 1] = base.g * t;
+          colors[q + 2] = base.b * t;
+          vi++;
+        }
+        indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+      }
     }
   }
 
@@ -153,6 +266,7 @@ export class World {
   private hemi: THREE.HemisphereLight;
   private fill: THREE.DirectionalLight;
   private meshes: THREE.Mesh[] = [];
+  private propMeshes: THREE.InstancedMesh[] = [];
   private materials: THREE.Material[] = [];
   private geometries: THREE.BufferGeometry[] = [];
   private skyMesh: THREE.Mesh | null = null;
@@ -182,8 +296,10 @@ export class World {
     const size = quality >= 2 ? 2048 : 1024;
     const cam = this.sun.shadow.camera;
     this.sun.shadow.mapSize.set(size, size);
-    // Fitted to the map extent (60 m) with headroom; a tighter frustum is the
-    // single biggest win for shadow crispness at a given map resolution.
+    // 92 m square, centred on the player by `followShadow`. That is the full
+    // extent of the largest map, so on the smaller ones it is pure headroom; a
+    // tighter frustum is the single biggest win for shadow crispness at a given
+    // map resolution, and following the player is what keeps it tight.
     cam.left = -46;
     cam.right = 46;
     cam.top = 46;
@@ -205,6 +321,10 @@ export class World {
     for (const m of this.meshes) {
       m.castShadow = quality > 0;
       m.receiveShadow = quality > 0;
+    }
+    for (const m of this.propMeshes) {
+      m.castShadow = quality > 0 && m.userData.mayCastShadow === true;
+      m.receiveShadow = quality > 0 && m.userData.mayReceiveShadow === true;
     }
   }
 
@@ -255,6 +375,17 @@ export class World {
       this.materials.push(mat);
       this.geometries.push(geo);
     }
+
+    // Round decoration, in as few draw calls as the shapes allow. Parked on
+    // `root` alongside the merged brushes rather than on the scene, because
+    // `clear()` treats anything directly on the scene as the sun disc.
+    const batch = buildProps(map.props, shadows);
+    for (const mesh of batch.meshes) {
+      this.root.add(mesh);
+      this.propMeshes.push(mesh);
+    }
+    this.geometries.push(...batch.geometries);
+    this.materials.push(...batch.materials);
 
     // Light rig, driven from the map data.
     const s = map.sun;
@@ -323,6 +454,11 @@ export class World {
   clear(): void {
     for (const m of this.meshes) this.root.remove(m);
     this.meshes.length = 0;
+    for (const m of this.propMeshes) {
+      this.root.remove(m);
+      m.dispose();
+    }
+    this.propMeshes.length = 0;
     if (this.skyMesh) {
       this.scene.remove(this.skyMesh);
       this.skyMesh = null;

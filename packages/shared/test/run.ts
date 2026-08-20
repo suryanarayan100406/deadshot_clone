@@ -26,8 +26,12 @@
  */
 
 import {
+  ACCEL_GROUND,
   AMMO_REFILL_MAGS_PER_KILL,
   BTN,
+  FRICTION_GROUND,
+  LF,
+  LOBBY_ACT,
   MAPS,
   MAX_HEALTH,
   MAX_PLAYERS,
@@ -37,9 +41,11 @@ import {
   PARTY_CODE_ALPHABET,
   PARTY_CODE_LEN,
   PARTY_CODE_MAX,
+  PHASE,
   PLAYER_CROUCH_HEIGHT,
   PLAYER_HEIGHT,
   PLAYER_RADIUS,
+  RF,
   ROTATIONS,
   SKIN,
   SPEED_CROUCH,
@@ -56,6 +62,8 @@ import {
   damageAtRange,
   decodeInputBatch,
   decodeJoin,
+  decodeLobby,
+  decodeLobbyCmd,
   decodeMatch,
   decodeRoster,
   decodeSnapshot,
@@ -63,6 +71,8 @@ import {
   dirFromAngles,
   encodeInputBatch,
   encodeJoin,
+  encodeLobby,
+  encodeLobbyCmd,
   encodeMatch,
   encodeRoster,
   encodeSnapshot,
@@ -72,6 +82,9 @@ import {
   mapColliders,
   newInputCmd,
   pickMap,
+  propBox,
+  propCollider,
+  propPlacementIssue,
   randomPartyCode,
   sanitizePartyCode,
   stepMovement,
@@ -385,6 +398,56 @@ suite('spawns are clear', () => {
   }
 });
 
+suite('decoration never lies about cover', () => {
+  // Props are drawn and almost never collided, which makes a badly placed one a
+  // lie the engine cannot detect at runtime: the player sees a barrel, shoots it,
+  // and the round passes straight through — or hides behind it and dies. So every
+  // prop on every map has to satisfy one of the three placement rules, and the
+  // rules are checked here rather than trusted to whoever authored the level,
+  // because there are over a thousand of them and no person is going to re-walk
+  // that after every edit.
+  for (const map of MAPS) {
+    let bad = 0;
+    let first = '';
+    for (const p of map.props) {
+      const issue = propPlacementIssue(map, p);
+      if (!issue) continue;
+      bad++;
+      if (!first) first = `${p.kind} r=${p.r} at (${p.x}, ${p.y}, ${p.z}): ${issue}`;
+    }
+    check(bad === 0, `${map.name}: all ${map.props.length} props are legally placed (${bad} bad${first ? `, e.g. ${first}` : ''})`);
+
+    // A map that lost its props would satisfy the rule above perfectly, so the
+    // floor is what stops the check from passing by being vacuous. Scaled off the
+    // map's own size so enlarging a level does not silently lower the bar.
+    const floor = Math.max(60, Math.round(map.half * 2));
+    check(map.props.length >= floor, `${map.name} is actually dressed (${map.props.length} props, floor ${floor})`);
+  }
+
+  // The one place props do collide. A solid prop is collided as the box inscribed
+  // in its silhouette, so the collider has to sit *inside* what is drawn: erring
+  // that way gives cover away, and erring the other way stops bullets and players
+  // with air. Cylinders lose 0.29 r at each diagonal, which is the whole error
+  // budget of the scheme and is deliberate.
+  let loose = 0;
+  let looseWhere = '';
+  for (const map of MAPS) {
+    for (const p of map.props) {
+      const c = propCollider(p);
+      if (!c) continue;
+      const d = propBox(p);
+      const inside =
+        c.minX >= d.minX - 1e-9 && c.maxX <= d.maxX + 1e-9 &&
+        c.minY >= d.minY - 1e-9 && c.maxY <= d.maxY + 1e-9 &&
+        c.minZ >= d.minZ - 1e-9 && c.maxZ <= d.maxZ + 1e-9;
+      if (inside) continue;
+      loose++;
+      if (!looseWhere) looseWhere = `${map.name} ${p.kind} at (${p.x}, ${p.y}, ${p.z})`;
+    }
+  }
+  check(loose === 0, `every solid prop's collider stays inside its silhouette (${loose} loose${looseWhere ? `, e.g. ${looseWhere}` : ''})`);
+});
+
 suite('the map rotation plays every map, in the right mode', () => {
   // A map can be fully authored, tested and completely unreachable, because
   // nothing outside this file ever mentions it by name. So: every map has to be
@@ -552,6 +615,77 @@ suite('stance speeds are ordered', () => {
   check(SPEED_SPRINT > SPEED_WALK, 'sprinting beats walking');
   check(SPEED_WALK > SPEED_CROUCH, 'walking beats crouching');
   check(SPEED_CROUCH > 0, 'crouching still moves');
+});
+
+/**
+ * The stance table is only worth anything if the simulation can actually reach the
+ * numbers in it, and for a long time it could not.
+ *
+ * `accelerate()` adds `ACCEL_GROUND * dt` per tick, flat, regardless of how fast
+ * the player is asking to go — Quake scales that gain by `wishSpeed` and this does
+ * not. Friction, meanwhile, removes a *proportion* of current speed every tick. Set
+ * those two against each other and ground speed is capped at
+ * `ACCEL_GROUND / FRICTION_GROUND` whatever the stance requests: at 90/11 the
+ * ceiling was 8.18 m/s, which is *below* `SPEED_SPRINT`. Sprint was therefore
+ * unreachable, holding shift did almost nothing you could feel, and — the part that
+ * made it hard to find — raising `SPEED_SPRINT` would not have helped either,
+ * because the number was never the binding constraint.
+ *
+ * So this suite asserts the reachable speeds rather than the declared ones, and
+ * asserts the inequality that makes them reachable. Retuning either constant now
+ * has to keep both true.
+ */
+suite('every stance actually reaches the speed it advertises', () => {
+  const floor: Box = { minX: -400, minY: -1, minZ: -400, maxX: 400, maxY: 0, maxZ: 400 };
+
+  /** Hold one stance in a straight line and report the speed it settles at. */
+  function terminal(buttons: number, speedMult = 1): number {
+    const crouching = (buttons & BTN.CROUCH) !== 0;
+    const s: MoveState = {
+      pos: v3(0, 0, 0),
+      vel: v3(0, 0, 0),
+      onGround: true,
+      crouching,
+      height: crouching ? PLAYER_CROUCH_HEIGHT : PLAYER_HEIGHT,
+    };
+    const cmd = newInputCmd();
+    cmd.forward = 1;
+    cmd.buttons = buttons;
+    // Two seconds, against a convergence time of about a tenth of one: this is the
+    // speed the player holds, not a number caught mid-acceleration.
+    for (let i = 0; i < 120; i++) stepMovement(s, cmd, [floor], speedMult, TICK_DT);
+    return Math.sqrt(s.vel.x * s.vel.x + s.vel.z * s.vel.z);
+  }
+
+  const ceiling = ACCEL_GROUND / FRICTION_GROUND;
+  const fastest = Math.max(...WEAPONS.map((w) => w.moveMult));
+
+  near(terminal(BTN.SPRINT), SPEED_SPRINT, 0.01, 'sprint settles at SPEED_SPRINT');
+  near(terminal(0), SPEED_WALK, 0.01, 'walking settles at SPEED_WALK');
+  near(terminal(BTN.CROUCH), SPEED_CROUCH, 0.01, 'crouching settles at SPEED_CROUCH');
+
+  // The difference, stated as the thing a player notices. Asserting the two speeds
+  // separately would still pass if both were clamped to the same ceiling.
+  near(
+    terminal(BTN.SPRINT) / terminal(0),
+    SPEED_SPRINT / SPEED_WALK,
+    0.01,
+    'so shift is worth the full advertised multiplier',
+  );
+
+  check(
+    ceiling > SPEED_SPRINT * fastest,
+    `the ground-speed ceiling (${ceiling.toFixed(2)} m/s) clears the fastest loadout ` +
+      `in the table (${(SPEED_SPRINT * fastest).toFixed(2)} m/s)`,
+  );
+  // Without the headroom above, every weapon sprints at the ceiling and the menu's
+  // Mobility bars describe a difference the simulation does not have.
+  near(
+    terminal(BTN.SPRINT, fastest),
+    SPEED_SPRINT * fastest,
+    0.01,
+    'and a high-mobility loadout gets its multiplier instead of clamping',
+  );
 });
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -901,9 +1035,9 @@ suite('snapshot round trip', () => {
 
 suite('roster and match round trip', () => {
   const entries: RosterEntry[] = [
-    { id: 1, name: 'Alpha', team: 1, kills: 9, deaths: 3, ping: 42, flags: 0 },
-    { id: 2, name: 'Bravo', team: 2, kills: 0, deaths: 11, ping: 250, flags: 64 },
-    { id: 3, name: 'ünïcode', team: 0, kills: 30, deaths: 0, ping: 7, flags: 1 },
+    { id: 1, name: 'Alpha', team: 1, kills: 9, deaths: 3, ping: 42, flags: 0, weapon: 0 },
+    { id: 2, name: 'Bravo', team: 2, kills: 0, deaths: 11, ping: 250, flags: 64, weapon: 3 },
+    { id: 3, name: 'ünïcode', team: 0, kills: 30, deaths: 0, ping: 7, flags: 1, weapon: 5 },
   ];
   const first = encodeRoster(entries);
   const decoded = decodeRoster(afterTag(first));
@@ -911,6 +1045,13 @@ suite('roster and match round trip', () => {
   check(decoded[2]?.name === 'ünïcode', 'roster names survive multi-byte UTF-8');
   check(decoded[1]?.ping === 250, 'a high ping is not truncated');
   check(decoded[1]?.flags === 64, 'the bot flag survives');
+  // The staging room puts a weapon in each character's hands from this byte alone,
+  // so a roster that decoded everybody's gun as slot 0 would be a lobby full of
+  // people holding the same rifle and nothing on screen to say why.
+  check(
+    decoded.every((e, i) => e.weapon === entries[i]!.weapon),
+    'and so does the weapon each of them is holding',
+  );
   sameBytes(first, encodeRoster(decoded), 'roster re-encodes identically');
 
   const match = { timeLeft: 421_000, scoreA: 61, scoreB: 74, limit: 75, over: 1, playersOnline: 11 };
@@ -922,6 +1063,61 @@ suite('roster and match round trip', () => {
   check(mBack.over === match.over, 'the match-over flag survives');
   check(mBack.playersOnline === match.playersOnline, 'the player count survives');
   sameBytes(mFirst, encodeMatch(mBack), 'match state re-encodes identically');
+});
+
+suite('lobby round trip', () => {
+  // Both directions, because the lobby is the one place where the client sends
+  // something other than movement: an action the server may refuse.
+  const msg = {
+    phase: PHASE.LOBBY,
+    hostId: 40_000,
+    flags: LF.BOTS | LF.PARTY,
+    countdown: 4_250,
+  };
+  const first = encodeLobby(msg);
+  const back = decodeLobby(afterTag(first));
+  check(back.phase === msg.phase, 'the phase survives');
+  check(back.hostId === msg.hostId, 'a high host id is not truncated');
+  check(back.flags === msg.flags, 'both room flags survive');
+  check(back.countdown === msg.countdown, 'the countdown survives to the millisecond');
+  sameBytes(first, encodeLobby(back), 'lobby state re-encodes identically');
+
+  // The countdown is a u16, so it saturates rather than wrapping — a value that
+  // wrapped would show as `0.0s` and read as "starting now" forever.
+  check(
+    decodeLobby(afterTag(encodeLobby({ ...msg, countdown: 90_000 }))).countdown === 65_535,
+    'an out-of-range countdown clamps instead of wrapping',
+  );
+
+  const cmd = encodeLobbyCmd(LOBBY_ACT.BOTS, 1);
+  const cmdBack = decodeLobbyCmd(afterTag(cmd));
+  check(cmdBack.action === LOBBY_ACT.BOTS, 'the requested action survives');
+  check(cmdBack.value === 1, 'and its value with it');
+  sameBytes(cmd, encodeLobbyCmd(cmdBack.action, cmdBack.value), 'a lobby command re-encodes identically');
+  sameBytes(encodeLobbyCmd(LOBBY_ACT.READY), encodeLobbyCmd(LOBBY_ACT.READY, 0), 'value defaults to 0');
+});
+
+suite('lobby and roster flags do not collide', () => {
+  // Not pedantry. The scoreboard read roster entries with the *actor* flag table
+  // for a while: bot was bit 6 there and bit 0 here, so every test came back
+  // false and bots quietly stopped being labelled. Distinct single bits, checked
+  // here, are what make that a compile-time concern rather than a silent one.
+  const rf = Object.values(RF);
+  check(new Set(rf).size === rf.length, `roster flags are distinct (${rf.join(', ')})`);
+  check(
+    rf.every((f) => f > 0 && (f & (f - 1)) === 0),
+    'and each is a single bit',
+  );
+  check(rf.reduce((a, b) => a | b, 0) <= 0xff, 'the whole set fits the u8 the roster writes');
+
+  const lf = Object.values(LF);
+  check(new Set(lf).size === lf.length, 'lobby flags are distinct');
+  check(lf.reduce((a, b) => a | b, 0) <= 0xff, 'and fit their u8 too');
+
+  const phases = Object.values(PHASE);
+  check(new Set(phases).size === phases.length, 'the three phases are three different numbers');
+  const acts = Object.values(LOBBY_ACT);
+  check(!acts.includes(0 as never), 'no lobby action is 0, so an empty packet asks for nothing');
 });
 
 /* ─────────────────────────────────────────────────────────────────────────────

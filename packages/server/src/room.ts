@@ -26,7 +26,6 @@ import {
   LAGCOMP_MAX_REWIND_MS,
   LF,
   LOBBY_ACT,
-  LOBBY_AUTOSTART_MIN,
   LOBBY_COUNTDOWN_MS,
   MATCH_TIME_MS,
   MAX_HEALTH,
@@ -88,6 +87,13 @@ const MAX_INPUTS_PER_TICK = 3;
 const INPUT_QUEUE_CAP = 40;
 const ROSTER_INTERVAL_MS = 500;
 const MATCH_INTERVAL_MS = 500;
+/**
+ * Heartbeat for the lobby packet.
+ *
+ * Faster than the others because it carries the countdown, and a number counting
+ * down in half-second steps reads as a stutter rather than a clock.
+ */
+const LOBBY_INTERVAL_MS = 250;
 const POST_MATCH_MS = 8000;
 const BOT_MANAGE_INTERVAL = 30;
 const CORPSE_LINGER_MS = 900;
@@ -227,6 +233,23 @@ export class Room {
     return n;
   }
 
+  /**
+   * Bots currently in the room.
+   *
+   * Counted off the player list rather than the bot manager's own map, so it agrees
+   * with `humanCount` by construction — the two together are always `players.size`,
+   * whatever route a bot arrived by.
+   *
+   * Read by matchmaking to break a tie between two public rooms with the same
+   * number of humans: fewer bots means more of the room is real, and the point of
+   * quick match is to find people.
+   */
+  get botCount(): number {
+    let n = 0;
+    for (const p of this.players.values()) if (p.isBot) n++;
+    return n;
+  }
+
   get isFull(): boolean {
     return this.humanCount >= MAX_PLAYERS;
   }
@@ -245,7 +268,11 @@ export class Room {
   }
 
   private lobbyFlags(): number {
-    return (this.botsEnabled ? LF.BOTS : 0) | (this.party ? LF.PARTY : 0);
+    return (
+      (this.botsEnabled ? LF.BOTS : 0) |
+      (this.party ? LF.PARTY : 0) |
+      (this.everyoneReady() ? LF.CAN_START : 0)
+    );
   }
 
   add(p: ServerPlayer, now: number): void {
@@ -449,6 +476,61 @@ export class Room {
     if (!clean) return;
     this.chatLog.push({ kind: EV.CHAT, a: p.id, text: clean });
     if (this.chatLog.length > 8) this.chatLog.shift();
+  }
+
+  /**
+   * A lobby request from a client.
+   *
+   * Every branch checks authority and phase here rather than trusting the client
+   * to have hidden the button, because the client is whatever connected to the
+   * socket. A request that is not allowed is dropped silently: there is no
+   * legitimate way to send one, so there is nobody to tell.
+   */
+  lobbyAction(p: ServerPlayer, action: number, value: number, now: number): void {
+    if (p.isBot || this.phase !== PHASE.LOBBY) return;
+    const isHost = p.id === this.hostId;
+
+    switch (action) {
+      case LOBBY_ACT.START:
+        if (!isHost) return;
+        // Cancelling is always allowed — an accidental Start is undone by pressing
+        // the same button again, so the host is never committed by a misclick.
+        if (this.startAt > 0) {
+          this.startAt = 0;
+          this.lobbyDirty = true;
+          return;
+        }
+        // Starting is not. Consent is mandatory and the host is not exempt from
+        // it: being the host is permission to begin the countdown once the room
+        // agrees, not permission to speak for it. A request that arrives while
+        // someone is still unready is dropped in silence, like every other
+        // unauthorised lobby request — the client already knows it is refused,
+        // because `LF.CAN_START` told it so before it drew the button.
+        if (!this.everyoneReady()) return;
+        this.startAt = now + LOBBY_COUNTDOWN_MS;
+        this.lobbyDirty = true;
+        return;
+
+      case LOBBY_ACT.BOTS: {
+        if (!isHost) return;
+        const on = value !== 0;
+        if (on === this.botsEnabled) return;
+        this.botsEnabled = on;
+        // Applied on the next bot-management pass rather than here, so that
+        // adding and removing bots stays in exactly one place.
+        this.lobbyDirty = true;
+        return;
+      }
+
+      case LOBBY_ACT.READY:
+        p.ready = !p.ready;
+        this.markRosterDirty();
+        this.lobbyDirty = true;
+        return;
+
+      default:
+        return;
+    }
   }
 
   // ── Simulation ─────────────────────────────────────────────────────────────
@@ -803,24 +885,132 @@ export class Room {
   // ── Match state ────────────────────────────────────────────────────────────
 
   private updateMatch(now: number): void {
-    if (this.overAt > 0) {
-      if (now - this.overAt > POST_MATCH_MS) this.resetMatch(now);
+    if (this.phase === PHASE.LOBBY) {
+      this.updateLobby(now);
       return;
     }
+
+    if (this.overAt > 0) {
+      if (now - this.overAt <= POST_MATCH_MS) return;
+      // A party goes back to its own room rather than straight into another
+      // round: the people in it chose each other, and the natural thing after a
+      // match is to argue about the next map, not to be dropped into it. A public
+      // room loops, because there is nobody there to decide anything.
+      if (this.party) this.returnToLobby(now);
+      else this.nextRound(now);
+      return;
+    }
+
     if (now >= this.matchEndsAt) {
-      this.overAt = now;
+      this.endMatch(now);
       return;
     }
     if (this.mode === MODE.TDM) {
-      if (this.scoreA >= TDM_KILL_LIMIT || this.scoreB >= TDM_KILL_LIMIT) this.overAt = now;
+      if (this.scoreA >= TDM_KILL_LIMIT || this.scoreB >= TDM_KILL_LIMIT) this.endMatch(now);
       return;
     }
     for (const p of this.players.values()) {
       if (p.kills >= FFA_KILL_LIMIT) {
-        this.overAt = now;
+        this.endMatch(now);
         return;
       }
     }
+  }
+
+  /**
+   * Lobby tick: the clock, and the countdown if one is running.
+   *
+   * The clock is pinned rather than paused, because "paused" would mean carrying a
+   * second notion of time that only the lobby uses. Pushing the end of the match
+   * forward every tick has the same effect on screen — a full clock, not moving —
+   * and leaves exactly one timestamp to reason about.
+   *
+   * Nothing here can *begin* a countdown. This used to start the match by itself
+   * once everybody was ready, which is what "the match started as soon as a bot
+   * joined" looked like from the inside: the room made a decision nobody had
+   * asked it to make. Starting is now a thing only the host does, and only with
+   * the room's consent.
+   */
+  private updateLobby(now: number): void {
+    this.matchEndsAt = now + MATCH_TIME_MS;
+    if (this.startAt === 0) return;
+
+    // Consent is re-checked every tick, not just at the moment Start is pressed,
+    // because it can be withdrawn (somebody un-readies) or diluted (somebody
+    // walks in) while the countdown runs. Either way it is no longer backed by
+    // everyone in the room agreeing to play, so it stops. Without this,
+    // un-readying during the last second still drags you into the match, and a
+    // player who joined with two seconds left is put into a round they never
+    // agreed to. Doing it here rather than at each of the three call sites that
+    // could invalidate a countdown means there is one rule, in one place.
+    if (!this.everyoneReady()) {
+      this.startAt = 0;
+      this.lobbyDirty = true;
+      return;
+    }
+    if (now >= this.startAt) this.beginMatch(now);
+  }
+
+  /**
+   * Whether every human in the room has consented, and there is at least one.
+   *
+   * Bots are skipped: they cannot consent, so counting them would make a room
+   * with bot fill impossible to start. This is the single gate on starting a
+   * match — there is deliberately no path that begins a countdown without it,
+   * including the host's Start button.
+   */
+  private everyoneReady(): boolean {
+    let humans = 0;
+    for (const p of this.players.values()) {
+      if (p.isBot) continue;
+      humans++;
+      if (!p.ready) return false;
+    }
+    return humans > 0;
+  }
+
+  private endMatch(now: number): void {
+    this.overAt = now;
+    this.phase = PHASE.OVER;
+    this.lobbyDirty = true;
+  }
+
+  /**
+   * Countdown reached zero: wipe whatever happened in the lobby and play for real.
+   *
+   * The reset is the reason the lobby can be a live map rather than a menu — the
+   * kills people got while waiting are erased here, so warming up costs nothing
+   * and there is no advantage in shooting your friends before the round starts.
+   */
+  private beginMatch(now: number): void {
+    this.startAt = 0;
+    this.phase = PHASE.LIVE;
+    for (const p of this.players.values()) p.ready = false;
+    this.resetMatch(now);
+    this.lobbyDirty = true;
+  }
+
+  /** Back to gathering after a party's match ends. */
+  private returnToLobby(now: number): void {
+    this.startAt = 0;
+    this.phase = PHASE.LOBBY;
+    for (const p of this.players.values()) p.ready = false;
+    this.resetMatch(now);
+    this.lobbyDirty = true;
+  }
+
+  /**
+   * A public room's next round, with nothing in between.
+   *
+   * The phase has to be put back explicitly. `resetMatch` deliberately does not
+   * touch it — it is also what `beginMatch` and `returnToLobby` call, and those two
+   * are going to different places — so leaving it out here left a room that played
+   * on while still reporting `OVER`, disagreeing with its own `isOver`.
+   */
+  private nextRound(now: number): void {
+    this.phase = PHASE.LIVE;
+    this.resetMatch(now);
+    this.lobbyDirty = true;
   }
 
   private resetMatch(now: number): void {
@@ -854,6 +1044,12 @@ export class Room {
     if (now - this.lastMatchAt >= MATCH_INTERVAL_MS) {
       this.lastMatchAt = now;
       this.sendMatch(now);
+    }
+    // Changes go out on the next tick; the interval is only a floor for the
+    // countdown, which has to keep ticking on screen without a state change to
+    // ride on, and a backstop for a client that missed one.
+    if (this.lobbyDirty || now - this.lastLobbyAt >= LOBBY_INTERVAL_MS) {
+      this.sendLobby(now);
     }
   }
 
@@ -960,7 +1156,12 @@ export class Room {
         kills: p.kills,
         deaths: p.deaths,
         ping: Math.round(p.ping),
-        flags: (p.isBot ? 1 : 0) | (p.alive ? 0 : 2),
+        flags:
+          (p.isBot ? RF.BOT : 0) |
+          (p.alive ? 0 : RF.DEAD) |
+          (p.ready ? RF.READY : 0) |
+          (p.id === this.hostId ? RF.HOST : 0),
+        weapon: p.weaponIdOf(),
       });
     }
     entries.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.id - b.id);
@@ -984,6 +1185,18 @@ export class Room {
       limit: this.killLimit,
       over: this.overAt > 0 ? 1 : 0,
       playersOnline: this.playersOnlineProvider(),
+    });
+    for (const p of this.players.values()) if (!p.isBot) p.send(packet);
+  }
+
+  private sendLobby(now: number): void {
+    this.lastLobbyAt = now;
+    this.lobbyDirty = false;
+    const packet = encodeLobby({
+      phase: this.phase,
+      hostId: this.hostId,
+      flags: this.lobbyFlags(),
+      countdown: this.startAt > 0 ? Math.max(0, this.startAt - now) : 0,
     });
     for (const p of this.players.values()) if (!p.isBot) p.send(packet);
   }

@@ -24,6 +24,7 @@
 import {
   AF,
   MAX_HEALTH,
+  RF,
   TEAM_A,
   TEAM_B,
   weaponById,
@@ -754,18 +755,22 @@ export class Hud {
     const html: string[] = [];
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i]!;
+      // `RF`, not `AF`. Roster flags and actor flags are different bytes with
+      // different meanings, and this loop read the actor ones for a while: bot
+      // there is bit 6, dead is bit 3, so every test silently came back false and
+      // the scoreboard quietly stopped labelling bots or dimming the dead.
       const classes = ['sb-row'];
       if (r.id === this.selfId) classes.push('me');
-      if (r.flags & AF.DEAD) classes.push('dead');
+      if (r.flags & RF.DEAD) classes.push('dead');
       if (this.teamMode) classes.push(r.team === TEAM_A ? 'ta' : r.team === TEAM_B ? 'tb' : '');
-      const bot = r.flags & AF.BOT ? '<span class="bot">BOT</span>' : '';
+      const bot = r.flags & RF.BOT ? '<span class="bot">BOT</span>' : '';
       html.push(
         `<div class="${classes.join(' ').trim()}">` +
           `<span>${i + 1}</span>` +
           `<span class="nm">${escapeHtml(r.name)}${bot}</span>` +
           `<span>${r.kills}</span>` +
           `<span>${r.deaths}</span>` +
-          `<span class="pg">${r.flags & AF.BOT ? '—' : `${r.ping}`}</span>` +
+          `<span class="pg">${r.flags & RF.BOT ? '—' : `${r.ping}`}</span>` +
           `</div>`,
       );
     }

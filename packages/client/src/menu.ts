@@ -38,9 +38,26 @@ export interface PlayConfig {
    * Party code, or empty for a public match. The server treats a named room as a
    * party: everyone who types the same code lands in the same match and, in team
    * deathmatch, on the same side.
+   *
+   * Set from the button that was pressed, never from the state of the code box —
+   * see `Intent`.
    */
   room: string;
 }
+
+/**
+ * Which button the player pressed, and therefore what `PlayConfig.room` becomes.
+ *
+ * There used to be one PLAY button that sent whatever was in the code box, and the
+ * code box is *persisted*: it is written on every keystroke, by the create button,
+ * and by an invite link. So one afternoon of playing with friends left a code in
+ * storage that every future press of PLAY silently rejoined — the player asked for
+ * a game and got last week's private room, already in progress and full of bots,
+ * with nothing anywhere saying why. Naming the intention and deriving the room from
+ * it makes that mistake unrepresentable: quick match cannot see the box, and
+ * neither of the other two can be reached without pressing them.
+ */
+type Intent = 'quick' | 'create' | 'join';
 
 export interface MenuHooks {
   onPlay(cfg: PlayConfig): void;
@@ -114,6 +131,8 @@ export class Menu {
   private nameInput = el<HTMLInputElement>('name-input');
   private roomInput = el<HTMLInputElement>('room-input');
   private roomNew = el<HTMLButtonElement>('room-new');
+  private playJoin = el<HTMLButtonElement>('play-join');
+  private partyNote = el('party-note');
   private modeSelect = el('mode-select');
   private weaponSelect = el('weapon-select');
   private weaponCard = el('weapon-card');
@@ -133,6 +152,12 @@ export class Menu {
   private tab: TabKey = 'game';
   /** True when settings was opened from the pause menu and should return to it. */
   private pausePending = false;
+  /**
+   * False while a connection is in flight, so no second match can be asked for.
+   * Held as state rather than read back off `play.disabled`, because Join has a
+   * reason of its own to be off and the two have to compose.
+   */
+  private playEnabled = true;
   /** Rebinding functions for every control on the open settings tab. */
   private syncers: Array<(s: Settings) => void> = [];
 
@@ -154,6 +179,9 @@ export class Menu {
     // longer than the server will key a room by. A `maxlength` attribute that
     // disagreed with `PARTY_CODE_MAX` would silently truncate on the way in.
     this.roomInput.maxLength = PARTY_CODE_MAX;
+    // After the field is wired up but before anything reads it, so an invite
+    // link is already in place when the play button labels itself.
+    this.prefillFromLink();
 
     this.buildWeaponPicker();
     this.bindMode();
@@ -165,6 +193,7 @@ export class Menu {
 
     this.selectWeapon(this.primary);
     this.syncMode();
+    this.syncParty();
     this.setBuild();
 
     // Keep the open settings panel truthful if anything else changes a value
@@ -271,24 +300,25 @@ export class Menu {
     for (const btn of this.modeSelect.querySelectorAll<HTMLElement>('button[data-mode]')) {
       btn.classList.toggle('on', (btn.dataset.mode === '1' ? 1 : 0) === this.mode);
     }
-    const label = this.mode === 1 ? 'Team Deathmatch' : 'Free For All';
-    // The play button is the last thing a player looks at, so it is where the
-    // party code belongs: joining a private match by accident — or failing to
-    // join one you meant to — is the mistake this line exists to prevent.
-    const code = sanitizePartyCode(this.roomInput.value);
-    this.playSub.textContent = code ? `${label} · Party ${code}` : label;
+    // Just the mode. This line used to append the party code as well, back when
+    // pressing the button below might send you to that room — which was the bug,
+    // not a labelling problem. Quick match no longer reads the box at all, so
+    // mentioning it here would be advertising something that cannot happen.
+    this.playSub.textContent = this.mode === 1 ? 'Team Deathmatch' : 'Free For All';
   }
 
   private bindName(): void {
     this.nameInput.addEventListener('input', () => {
       this.settings.set('name', this.nameInput.value);
     });
-    // Enter in the name box is the same as pressing play.
+    // Enter in the name box takes the default action, which is a quick match. It
+    // is deliberately not "whatever the code box says": the two fields are far
+    // apart on screen and a keystroke in one must not commit the other.
     this.nameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         this.nameInput.blur();
-        this.submit();
+        this.submit('quick');
       }
     });
   }
@@ -304,14 +334,26 @@ export class Menu {
   }
 
   /* ── Party ────────────────────────────────────────────────────────────────
-     A party is just a named room, which is why there is no lobby screen, no
-     invite list and no state to keep in sync: the code *is* the party. Type the
-     same five characters as your friends and the server puts you in the same
-     match on the same side; leave it blank and you go wherever there is space.
+     A party is a named room, and the code is its name. Everyone who types the same
+     characters lands in the same room — same map, same mode, same side in team
+     deathmatch — because on the server that code *is* the room's identity.
 
-     Everything is normalised on the way in rather than validated on the way out,
-     so there is no error state to design and no way to end up alone in a room
-     called `Foxtrot ` because of a trailing space.
+     There are two buttons here rather than one, and the split is the point.
+     `Create` invents a code and opens the room it names; `Join` sends the code in
+     the box and refuses to do anything without one. Neither is reachable by
+     accident, and quick match — the button above — never consults the box at all.
+     Before that split, a blank box meant "public match" and a filled one meant
+     "that room", so the difference between a public game and somebody's week-old
+     private lobby was a field the player had probably forgotten they had filled in.
+
+     A private room opens in its lobby instead of a live match, because the people
+     in it arrive one at a time and somebody has to still be there when the last of
+     them loads. That is also where bots are decided: a public room fills itself, a
+     private one stays empty until the host says otherwise.
+
+     Everything is normalised on the way in rather than validated on the way out, so
+     there is no error state to design and no way to end up alone in a room called
+     `Foxtrot ` because of a trailing space.
      ─────────────────────────────────────────────────────────────────────── */
 
   private bindParty(): void {
@@ -321,40 +363,110 @@ export class Menu {
       // caret jumps to the end on every keystroke.
       if (clean !== this.roomInput.value) this.roomInput.value = clean;
       this.settings.set('room', clean);
-      this.syncMode();
+      this.syncParty();
     });
+    // Enter in the code box means the button beside it, not the big one above.
     this.roomInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         this.roomInput.blur();
-        this.submit();
+        this.submit('join');
       }
     });
     this.roomNew.addEventListener('click', () => {
-      // Clicking again on a code you already have re-rolls it, which is the
-      // escape hatch for the rare collision with somebody else's party.
-      const code = randomPartyCode();
-      this.roomInput.value = code;
-      this.settings.set('room', code);
-      this.syncMode();
-      this.roomInput.focus();
-      this.roomInput.select();
+      // One click, not two: generating a code and then having to press play as
+      // well is a step with nothing in it, and the lobby it opens is where the
+      // code is displayed, copied and shared anyway.
+      this.submit('create');
     });
   }
 
-  private submit(): void {
+  /**
+   * Keep the party controls honest about what they would do.
+   *
+   * Join is disabled with an empty box because an empty code sanitizes to `''`,
+   * which the server reads as "any public room" — so a Join pressed with nothing
+   * typed would quietly become a quick match, which is the same class of silent
+   * substitution the whole intent split exists to remove. Better to refuse.
+   */
+  private syncParty(): void {
+    const code = sanitizePartyCode(this.roomInput.value);
+    const can = this.playEnabled && code !== '';
+    this.playJoin.disabled = !can;
+    this.playJoin.style.pointerEvents = can ? '' : 'none';
+    this.partyNote.textContent = code
+      ? `Join puts you in ${code} — same lobby and same map as everyone else with that code.`
+      : 'Create a lobby to get a code you can share, or type a code to join theirs.';
+  }
+
+  /**
+   * Honour a `?party=CODE` link.
+   *
+   * Prefill, never auto-join: the link arrived from a friend, but the name and
+   * the weapon are still the player's to choose, and joining out from under them
+   * would take that away. The code lands in the box and Join lights up; pressing
+   * it is theirs. The query is dropped from the address bar afterwards so a later
+   * refresh does not quietly put somebody's party code back in front of them.
+   */
+  private prefillFromLink(): void {
+    let code: string;
+    try {
+      code = sanitizePartyCode(new URLSearchParams(location.search).get('party') ?? '');
+    } catch {
+      return;
+    }
+    if (!code) return;
+    this.roomInput.value = code;
+    this.settings.set('room', code);
+    try {
+      history.replaceState(null, '', location.pathname);
+    } catch {
+      // A sandboxed frame can refuse this. The prefill still happened, which is
+      // the part that matters.
+    }
+  }
+
+  /**
+   * Ask to be put in a match.
+   *
+   * The room comes from the intent and nothing else. `create` writes its new code
+   * back into the box on the way past — not because anything downstream reads it,
+   * but because the code is about to be shared out loud and the player should be
+   * able to see it, and because a refresh then still has it for a Join.
+   */
+  private submit(intent: Intent): void {
+    const room =
+      intent === 'quick'
+        ? ''
+        : intent === 'create'
+          ? randomPartyCode()
+          : sanitizePartyCode(this.roomInput.value);
+
+    // Belt and braces against the one path that could reintroduce the original
+    // bug: Join with an empty box would send `''`, which is a public match. The
+    // button is already disabled in that state; this makes it impossible rather
+    // than merely unreachable, since a keyboard Enter arrives here too.
+    if (intent === 'join' && !room) return;
+
+    if (intent === 'create') {
+      this.roomInput.value = room;
+      this.settings.set('room', room);
+      this.syncParty();
+    }
+
     this.hooks.onPlay({
       name: this.resolvedName(),
       mode: this.mode,
       primary: this.primary,
-      room: sanitizePartyCode(this.roomInput.value),
+      room,
     });
   }
 
   /* ── Buttons ──────────────────────────────────────────────────────────── */
 
   private bindButtons(): void {
-    this.play.addEventListener('click', () => this.submit());
+    this.play.addEventListener('click', () => this.submit('quick'));
+    this.playJoin.addEventListener('click', () => this.submit('join'));
     el('open-settings').addEventListener('click', () => this.openSettings());
     el('open-help').addEventListener('click', () => this.openModal(this.helpModal));
 
@@ -369,13 +481,25 @@ export class Menu {
     });
   }
 
-  /** Disables play while connecting, with an explanation on the button. */
+  /**
+   * Disables every way into a match while connecting, with an explanation on the
+   * quick-match button.
+   *
+   * All three, not just the one that was pressed: a connection is in flight and a
+   * second `onPlay` would open a second socket to a different room, leaving the
+   * first one's welcome to arrive into a session that has already moved on.
+   */
   setPlayEnabled(on: boolean, subtext?: string): void {
-    this.play.disabled = !on;
-    this.play.style.opacity = on ? '' : '0.55';
-    this.play.style.pointerEvents = on ? '' : 'none';
+    this.playEnabled = on;
+    for (const btn of [this.play, this.roomNew]) {
+      btn.disabled = !on;
+      btn.style.opacity = on ? '' : '0.55';
+      btn.style.pointerEvents = on ? '' : 'none';
+    }
     if (subtext !== undefined) this.playSub.textContent = subtext;
     else this.syncMode();
+    // Join's own gate is stricter, so it decides for itself in both directions.
+    this.syncParty();
   }
 
   /** `null` when the count is unknown, which shows as offline. */

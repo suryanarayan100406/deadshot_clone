@@ -27,6 +27,7 @@ import {
   TICK_MS,
   decodeInputBatch,
   decodeJoin,
+  decodeLobbyCmd,
   encodePong,
   sanitizePartyCode,
   type InputCmd,
@@ -154,6 +155,15 @@ function onMessage(conn: Conn, data: Uint8Array, now: number): void {
       if (!p || !conn.room) return;
       p.lastPacketAt = now;
       conn.room.pushChat(p, r.str());
+      return;
+    }
+
+    case MSG.C_LOBBY: {
+      const p = conn.player;
+      if (!p || !conn.room) return;
+      p.lastPacketAt = now;
+      const cmd = decodeLobbyCmd(r);
+      conn.room.lobbyAction(p, cmd.action, cmd.value, now);
       return;
     }
 

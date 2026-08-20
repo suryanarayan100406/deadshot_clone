@@ -92,6 +92,16 @@ export const LF = {
   BOTS: 1 << 0,
   /** The room was asked for by name, i.e. it is a party. */
   PARTY: 1 << 1,
+  /**
+   * Every human in the room has readied up, so the host's Start would be honoured.
+   *
+   * The client could count ready flags in the roster and work this out for itself,
+   * but then two implementations of "may this match begin" would have to agree
+   * forever, and the one drawing the button is not the one enforcing the rule. The
+   * server sends its answer instead, so a disabled Start button and a refused
+   * Start request are the same decision rather than two that can drift apart.
+   */
+  CAN_START: 1 << 2,
 } as const;
 
 /** What a client is asking the lobby to do. */
@@ -572,6 +582,17 @@ export interface RosterEntry {
   deaths: number;
   ping: number;
   flags: number;
+  /**
+   * Id of the weapon currently held, for the lobby's staging room.
+   *
+   * The snapshot already carries this per actor, but the staging room is drawn
+   * from the roster alone — it shows people who are standing in a lobby, and it
+   * has to show them holding something before the first snapshot of them arrives.
+   * Deriving it from the snapshot instead would leave every character empty-handed
+   * for the first frames and would put an unarmed silhouette on screen for anyone
+   * out of view, which is most of a full room.
+   */
+  weapon: number;
 }
 
 export function encodeRoster(entries: readonly RosterEntry[]): Uint8Array {
@@ -584,7 +605,8 @@ export function encodeRoster(entries: readonly RosterEntry[]): Uint8Array {
       .u16v(e.kills)
       .u16v(e.deaths)
       .u16v(Math.min(65535, e.ping))
-      .u8v(e.flags);
+      .u8v(e.flags)
+      .u8v(e.weapon);
   }
   return w.take();
 }
@@ -601,6 +623,7 @@ export function decodeRoster(r: ByteReader): RosterEntry[] {
       deaths: r.u16v(),
       ping: r.u16v(),
       flags: r.u8v(),
+      weapon: r.u8v(),
     };
   }
   return out;

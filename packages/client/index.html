@@ -150,29 +150,34 @@
           </div>
 
           <div class="field">
-            <span class="field-label">Party <em class="field-hint">optional — same code, same team</em></span>
-            <div class="party-row">
-              <input
-                id="room-input"
-                maxlength="12"
-                placeholder="Public match"
-                autocomplete="off"
-                spellcheck="false"
-                aria-label="Party code"
-              />
-              <button id="room-new" type="button" class="btn btn-ghost">New code</button>
-            </div>
-          </div>
-
-          <div class="field">
             <span class="field-label">Primary weapon</span>
             <div class="weapons" id="weapon-select"></div>
           </div>
 
           <button id="play" type="button" class="btn btn-primary">
-            <span>PLAY</span>
+            <span>QUICK MATCH</span>
             <em id="play-sub">Free For All</em>
           </button>
+
+          <!-- Three separate ways in, because they are three different intentions.
+               Quick match above never looks at the code box; the two below never
+               guess one. -->
+          <div class="field" id="party-field">
+            <span class="field-label">Play with friends <em class="field-hint">one code — same lobby, same map</em></span>
+            <div class="party-row">
+              <input
+                id="room-input"
+                maxlength="12"
+                placeholder="Party code"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="Party code"
+              />
+              <button id="play-join" type="button" class="btn btn-ghost">Join</button>
+            </div>
+            <button id="room-new" type="button" class="btn btn-ghost">Create a lobby</button>
+            <p id="party-note" class="party-note"></p>
+          </div>
 
           <div class="menu-actions">
             <button id="open-settings" type="button" class="btn btn-ghost">Settings</button>
@@ -191,6 +196,66 @@
       <footer id="menu-foot">
         <span>An original browser FPS. Built with Three.js.</span>
         <span id="foot-build"></span>
+      </footer>
+    </div>
+
+    <!-- ── Pre-match staging room ───────────────────────────────────────────
+         A takeover rather than a card in the corner. The question people have
+         before a match is who they are about to play with, and a column of names
+         does not answer it — so the middle of this screen is the room itself,
+         with everybody standing in it holding the weapon they picked.
+
+         The bodies are drawn into the main canvas by lobbystage.ts. This layer is
+         only the chrome around them, which is why it is banded top and bottom and
+         empty through the middle: anything painted there would cover the one part
+         of the screen that is the point. -->
+    <div id="lobby-screen" class="hidden">
+      <header class="ls-top">
+        <div class="ls-titles">
+          <div class="ls-title">LOBBY</div>
+          <div class="ls-sub"><span id="lb-mode">Free For All</span> · <span id="lb-map">Dustworks</span></div>
+        </div>
+
+        <div class="ls-invite" id="lb-invite">
+          <div>
+            <span class="ls-label">Invite code</span>
+            <b id="lb-code">—</b>
+          </div>
+          <button id="lb-copy" type="button" class="btn btn-ghost">Copy link</button>
+        </div>
+
+        <button id="lb-leave" type="button" class="btn btn-ghost ls-leave">Leave</button>
+      </header>
+
+      <!-- Click-through, so the empty middle never eats a drag or a stray click
+           that the room behind it has no use for either. -->
+      <div class="ls-mid">
+        <div id="lb-countdown" class="ls-count hidden">
+          <b id="lb-cd-secs">5</b>
+          <span>Match starting</span>
+        </div>
+      </div>
+
+      <footer class="ls-bottom">
+        <div class="ls-state">
+          <div class="ls-players">
+            <span class="ls-label">Players</span>
+            <b id="lb-count">0 / 12</b>
+          </div>
+          <div class="ls-tally" id="lb-tally">Nobody here yet</div>
+          <div class="ls-note" id="lb-note">Waiting for players.</div>
+        </div>
+
+        <div class="ls-controls">
+          <div class="ls-opt" id="lb-bots-row">
+            <label for="lb-bots">Fill with bots<small>The host decides</small></label>
+            <button id="lb-bots" type="button" class="switch" role="switch" aria-checked="false"></button>
+          </div>
+          <div class="ls-acts">
+            <button id="lb-ready" type="button" class="btn btn-ghost">Ready</button>
+            <button id="lb-start" type="button" class="btn btn-primary">Start match</button>
+          </div>
+        </div>
       </footer>
     </div>
 
