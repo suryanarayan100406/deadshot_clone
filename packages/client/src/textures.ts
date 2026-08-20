@@ -1,7 +1,7 @@
 /**
- * High-resolution procedural PBR texture generator for world materials.
- * Generates seamless tiling textures with rich surface detailing, grunge,
- * panel seams, woodgrain, diamond treadplate, and concrete aggregate.
+ * High-performance tactical surface texture generator.
+ * Creates crisp, high-luminance tiling surface textures (concrete, metal, sand,
+ * wood, tile, camo, carbon) that modulate vertex colors without darkening the scene.
  */
 
 import * as THREE from 'three';
@@ -9,262 +9,267 @@ import type { MatKey } from '@oneshot/shared';
 
 const textureCache = new Map<string, THREE.Texture>();
 
-function noise(x: number, y: number, seed = 0): number {
-  const n = Math.sin(x * 12.9898 + y * 78.233 + seed * 37.719) * 43758.5453;
-  return n - Math.floor(n);
+function createBaseCanvas(size = 256): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  return { canvas, ctx };
 }
 
-function smoothNoise(x: number, y: number, seed = 0): number {
-  const i = Math.floor(x);
-  const j = Math.floor(y);
-  const fx = x - i;
-  const fy = y - j;
-  const s = fx * fx * (3 - 2 * fx);
-  const t = fy * fy * (3 - 2 * fy);
-
-  const n00 = noise(i, j, seed);
-  const n10 = noise(i + 1, j, seed);
-  const n01 = noise(i, j + 1, seed);
-  const n11 = noise(i + 1, j + 1, seed);
-
-  const nx0 = n00 * (1 - s) + n10 * s;
-  const nx1 = n01 * (1 - s) + n11 * s;
-  return nx0 * (1 - t) + nx1 * t;
-}
-
-function fbm(x: number, y: number, octaves = 4, seed = 0): number {
-  let val = 0;
-  let amp = 0.5;
-  let freq = 1;
-  for (let o = 0; o < octaves; o++) {
-    val += smoothNoise(x * freq, y * freq, seed + o * 17) * amp;
-    amp *= 0.5;
-    freq *= 2;
-  }
-  return val;
-}
-
-/** Creates realistic concrete texture with panel seams and aggregate grain */
+/** Crisp architectural concrete panel texture */
 function generateConcrete(dark: boolean): HTMLCanvasElement {
-  const size = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const img = ctx.createImageData(size, size);
-  const data = img.data;
+  const size = 256;
+  const { canvas, ctx } = createBaseCanvas(size);
 
-  const baseR = dark ? 105 : 155;
-  const baseG = dark ? 104 : 153;
-  const baseB = dark ? 98 : 145;
+  // High luminance base so vertex colors remain bright
+  ctx.fillStyle = dark ? '#e0e0e0' : '#f4f4f2';
+  ctx.fillRect(0, 0, size, size);
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const idx = (y * size + x) * 4;
-      const n1 = fbm(x / 32, y / 32, 4, 1);
-      const n2 = fbm(x / 8, y / 8, 3, 2);
-      const grit = (noise(x, y, 3) - 0.5) * 22;
-
-      // Architectural panel seams every 256px
-      const seamX = Math.min(x % 256, 256 - (x % 256));
-      const seamY = Math.min(y % 256, 256 - (y % 256));
-      let seamShade = 1.0;
-      if (seamX <= 2 || seamY <= 2) {
-        seamShade = 0.65 + Math.min(seamX, seamY) * 0.15;
-      }
-
-      // Tie rod holes at panel intersections
-      const isTieX = Math.abs((x % 256) - 24) < 5 || Math.abs((x % 256) - 232) < 5;
-      const isTieY = Math.abs((y % 256) - 24) < 5 || Math.abs((y % 256) - 232) < 5;
-      if (isTieX && isTieY) {
-        seamShade *= 0.55;
-      }
-
-      const val = (n1 * 0.7 + n2 * 0.3 - 0.5) * 45 + grit;
-      data[idx] = Math.max(0, Math.min(255, (baseR + val) * seamShade));
-      data[idx + 1] = Math.max(0, Math.min(255, (baseG + val) * seamShade));
-      data[idx + 2] = Math.max(0, Math.min(255, (baseB + val) * seamShade));
-      data[idx + 3] = 255;
-    }
+  // Subtle aggregate speckle
+  ctx.fillStyle = dark ? '#cccccc' : '#e4e4e0';
+  for (let i = 0; i < 400; i++) {
+    const x = (Math.sin(i * 99.1) * 0.5 + 0.5) * size;
+    const y = (Math.cos(i * 33.7) * 0.5 + 0.5) * size;
+    const r = (i % 3) + 1;
+    ctx.fillRect(x, y, r, r);
   }
-  ctx.putImageData(img, 0, 0);
+
+  // Panel borders
+  ctx.strokeStyle = dark ? '#999999' : '#b0b0aa';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1, 1, size - 2, size - 2);
+
+  // Tie rod holes in the four corners
+  ctx.fillStyle = dark ? '#777777' : '#888884';
+  for (const [cx, cy] of [[24, 24], [size - 24, 24], [24, size - 24], [size - 24, size - 24]]) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
   return canvas;
 }
 
-/** Creates desert sand with wind ripples */
+/** Desert sand ripple texture */
 function generateSand(dark: boolean): HTMLCanvasElement {
-  const size = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const img = ctx.createImageData(size, size);
-  const data = img.data;
+  const size = 256;
+  const { canvas, ctx } = createBaseCanvas(size);
 
-  const baseR = dark ? 165 : 200;
-  const baseG = dark ? 132 : 168;
-  const baseB = dark ? 90 : 122;
+  ctx.fillStyle = dark ? '#e8e2d4' : '#faf6ee';
+  ctx.fillRect(0, 0, size, size);
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const idx = (y * size + x) * 4;
-      // Wavy ripple dunes
-      const ripple = Math.sin((x * 0.08) + Math.sin(y * 0.04) * 4 + (y * 0.02)) * 18;
-      const n = (fbm(x / 24, y / 24, 3, 5) - 0.5) * 30;
-      const speck = (noise(x, y, 7) - 0.5) * 14;
-
-      const v = ripple + n + speck;
-      data[idx] = Math.max(0, Math.min(255, baseR + v));
-      data[idx + 1] = Math.max(0, Math.min(255, baseG + v * 0.85));
-      data[idx + 2] = Math.max(0, Math.min(255, baseB + v * 0.6));
-      data[idx + 3] = 255;
-    }
+  // Wind ripple bands
+  ctx.strokeStyle = dark ? '#cec4b0' : '#e6decb';
+  ctx.lineWidth = 4;
+  for (let y = 16; y < size; y += 32) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.bezierCurveTo(size * 0.33, y - 8, size * 0.66, y + 8, size, y);
+    ctx.stroke();
   }
-  ctx.putImageData(img, 0, 0);
+
+  // Fine sand grain
+  ctx.fillStyle = dark ? '#c4baa6' : '#e0d8c4';
+  for (let i = 0; i < 300; i++) {
+    const x = (Math.sin(i * 14.3) * 0.5 + 0.5) * size;
+    const y = (Math.cos(i * 71.9) * 0.5 + 0.5) * size;
+    ctx.fillRect(x, y, 2, 1);
+  }
+
   return canvas;
 }
 
-/** Creates industrial steel diamond-plate & riveted panels */
+/** Industrial diamond-tread metal plate */
 function generateMetal(dark: boolean): HTMLCanvasElement {
-  const size = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const img = ctx.createImageData(size, size);
-  const data = img.data;
+  const size = 256;
+  const { canvas, ctx } = createBaseCanvas(size);
 
-  const base = dark ? 75 : 110;
+  ctx.fillStyle = dark ? '#d8dce0' : '#f0f3f6';
+  ctx.fillRect(0, 0, size, size);
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const idx = (y * size + x) * 4;
-
-      // Treadplate pattern: rotated diamond bars
-      const px = x % 32;
-      const py = y % 32;
-      const d1 = Math.abs(px - py);
-      const d2 = Math.abs(px + py - 32);
-      let tread = 0;
-      if ((d1 < 4 && py > 6 && py < 26) || (d2 < 4 && px > 6 && px < 26)) {
-        tread = 38;
-      }
-
-      // Panel border seam every 128px
-      const edge = (x % 128 <= 2 || y % 128 <= 2) ? -28 : 0;
-      // Rivets along panel edges
-      const isRivet = ((x % 128 < 8 || x % 128 > 120) && (y % 16 < 4)) ||
-                      ((y % 128 < 8 || y % 128 > 120) && (x % 16 < 4));
-      const rivet = isRivet ? 45 : 0;
-
-      const scratch = (noise(x, y, 9) - 0.5) * 12;
-      const v = tread + edge + rivet + scratch;
-
-      data[idx] = Math.max(0, Math.min(255, base + v));
-      data[idx + 1] = Math.max(0, Math.min(255, base + v + 3));
-      data[idx + 2] = Math.max(0, Math.min(255, base + v + 7));
-      data[idx + 3] = 255;
+  // Diamond tread bars
+  ctx.fillStyle = dark ? '#a8b0b8' : '#c8d0d8';
+  const step = 32;
+  for (let y = 8; y < size; y += step) {
+    for (let x = 8; x < size; x += step) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillRect(-6, -2, 12, 4);
+      ctx.restore();
     }
   }
-  ctx.putImageData(img, 0, 0);
+
+  // Plate border seam and rivets
+  ctx.strokeStyle = dark ? '#889098' : '#a8b0b8';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, size - 2, size - 2);
+
+  ctx.fillStyle = '#ffffff';
+  for (let p = 16; p < size; p += 32) {
+    ctx.fillRect(p - 1, 2, 3, 3);
+    ctx.fillRect(p - 1, size - 5, 3, 3);
+    ctx.fillRect(2, p - 1, 3, 3);
+    ctx.fillRect(size - 5, p - 1, 3, 3);
+  }
+
   return canvas;
 }
 
-/** Creates weathered timber wood planks */
+/** Weathered timber wood planks */
 function generateWood(): HTMLCanvasElement {
-  const size = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const img = ctx.createImageData(size, size);
-  const data = img.data;
+  const size = 256;
+  const { canvas, ctx } = createBaseCanvas(size);
 
-  const baseR = 138;
-  const baseG = 104;
-  const baseB = 68;
+  ctx.fillStyle = '#f6ede0';
+  ctx.fillRect(0, 0, size, size);
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const idx = (y * size + x) * 4;
-      // Vertical plank seam every 64px
-      const seam = (x % 64 <= 2) ? -55 : 0;
+  // Vertical planks
+  const plankW = 64;
+  for (let x = 0; x < size; x += plankW) {
+    ctx.strokeStyle = '#a68c70';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, 0, plankW, size);
 
-      // Wood grain lines
-      const grain = Math.sin(x * 0.4 + fbm(x / 16, y / 64, 3, 11) * 12) * 24;
-      const fine = (noise(x, y, 13) - 0.5) * 14;
-
-      const v = seam + grain + fine;
-      data[idx] = Math.max(0, Math.min(255, baseR + v));
-      data[idx + 1] = Math.max(0, Math.min(255, baseG + v * 0.8));
-      data[idx + 2] = Math.max(0, Math.min(255, baseB + v * 0.55));
-      data[idx + 3] = 255;
+    // Wood grain lines
+    ctx.strokeStyle = '#d6c0a4';
+    ctx.lineWidth = 1.5;
+    for (let g = 8; g < plankW; g += 14) {
+      ctx.beginPath();
+      ctx.moveTo(x + g, 0);
+      ctx.bezierCurveTo(x + g + 4, size * 0.4, x + g - 4, size * 0.7, x + g, size);
+      ctx.stroke();
     }
+
+    // Iron nails at top and bottom
+    ctx.fillStyle = '#685440';
+    ctx.beginPath();
+    ctx.arc(x + plankW * 0.5, 12, 3, 0, Math.PI * 2);
+    ctx.arc(x + plankW * 0.5, size - 12, 3, 0, Math.PI * 2);
+    ctx.fill();
   }
-  ctx.putImageData(img, 0, 0);
+
   return canvas;
 }
 
-/** Creates rusted oxidized iron with flaking patches */
+/** Rusted corrugated metal */
 function generateRust(): HTMLCanvasElement {
-  const size = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const img = ctx.createImageData(size, size);
-  const data = img.data;
+  const size = 256;
+  const { canvas, ctx } = createBaseCanvas(size);
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const idx = (y * size + x) * 4;
-      const n = fbm(x / 20, y / 20, 4, 15);
-      const isRust = n > 0.42;
+  ctx.fillStyle = '#eddcd0';
+  ctx.fillRect(0, 0, size, size);
 
-      if (isRust) {
-        const patch = (n - 0.42) * 180;
-        data[idx] = Math.min(255, 145 + patch * 0.4);
-        data[idx + 1] = Math.min(255, 88 + patch * 0.2);
-        data[idx + 2] = Math.min(255, 55 + patch * 0.1);
-      } else {
-        const metal = 80 + (noise(x, y, 17) - 0.5) * 20;
-        data[idx] = metal;
-        data[idx + 1] = metal + 2;
-        data[idx + 2] = metal + 5;
-      }
-      data[idx + 3] = 255;
-    }
+  // Rust patches
+  ctx.fillStyle = '#b87c5a';
+  for (let i = 0; i < 8; i++) {
+    const cx = (Math.sin(i * 44.1) * 0.5 + 0.5) * size;
+    const cy = (Math.cos(i * 88.3) * 0.5 + 0.5) * size;
+    const rw = 25 + (i % 4) * 15;
+    const rh = 18 + (i % 3) * 12;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rw, rh, i * 0.5, 0, Math.PI * 2);
+    ctx.fill();
   }
-  ctx.putImageData(img, 0, 0);
+
+  // Dark corrosion pitting
+  ctx.fillStyle = '#7a4228';
+  for (let i = 0; i < 40; i++) {
+    const x = (Math.sin(i * 12.7) * 0.5 + 0.5) * size;
+    const y = (Math.cos(i * 53.1) * 0.5 + 0.5) * size;
+    ctx.fillRect(x, y, 3, 3);
+  }
+
   return canvas;
 }
 
-/** Creates tactical painted panel with edge chips */
+/** Tactical painted accent panel */
 function generateAccent(): HTMLCanvasElement {
-  const size = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const img = ctx.createImageData(size, size);
-  const data = img.data;
+  const size = 256;
+  const { canvas, ctx } = createBaseCanvas(size);
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const idx = (y * size + x) * 4;
-      const edge = (x % 128 <= 2 || y % 128 <= 2) ? -35 : 0;
-      const n = (fbm(x / 16, y / 16, 3, 21) - 0.5) * 25;
-      const chip = noise(x, y, 23) > 0.96 ? -50 : 0;
+  ctx.fillStyle = '#f0f5fa';
+  ctx.fillRect(0, 0, size, size);
 
-      const v = edge + n + chip;
-      data[idx] = Math.max(0, Math.min(255, 60 + v));
-      data[idx + 1] = Math.max(0, Math.min(255, 118 + v));
-      data[idx + 2] = Math.max(0, Math.min(255, 180 + v));
-      data[idx + 3] = 255;
+  ctx.strokeStyle = '#90b4d4';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(4, 4, size - 8, size - 8);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(size * 0.5 - 20, size * 0.5 - 3, 40, 6);
+
+  return canvas;
+}
+
+/** Generates tactical multi-cam camouflage pattern */
+export function getCamoTexture(): THREE.Texture {
+  const hit = textureCache.get('tactical_camo');
+  if (hit) return hit;
+
+  const size = 256;
+  const { canvas, ctx } = createBaseCanvas(size);
+
+  ctx.fillStyle = '#6a7266'; // Olive drab
+  ctx.fillRect(0, 0, size, size);
+
+  // Khaki patches
+  ctx.fillStyle = '#8f8876';
+  for (let i = 0; i < 12; i++) {
+    const x = (Math.sin(i * 31.7) * 0.5 + 0.5) * size;
+    const y = (Math.cos(i * 61.3) * 0.5 + 0.5) * size;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 35, 22, i * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Charcoal shadow spots
+  ctx.fillStyle = '#3a3e38';
+  for (let i = 0; i < 8; i++) {
+    const x = (Math.cos(i * 47.9) * 0.5 + 0.5) * size;
+    const y = (Math.sin(i * 83.1) * 0.5 + 0.5) * size;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 24, 16, i * 1.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  textureCache.set('tactical_camo', tex);
+  return tex;
+}
+
+/** Generates ballistic carbon fiber weave texture */
+export function getCarbonTexture(): THREE.Texture {
+  const hit = textureCache.get('tactical_carbon');
+  if (hit) return hit;
+
+  const size = 128;
+  const { canvas, ctx } = createBaseCanvas(size);
+
+  ctx.fillStyle = '#60646c';
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.fillStyle = '#8a909c';
+  for (let y = 0; y < size; y += 8) {
+    for (let x = 0; x < size; x += 8) {
+      if (((x + y) / 8) % 2 === 0) {
+        ctx.fillRect(x, y, 8, 8);
+      }
     }
   }
-  ctx.putImageData(img, 0, 0);
-  return canvas;
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  textureCache.set('tactical_carbon', tex);
+  return tex;
 }
 
 /** Returns cached high-res seamless tiling texture for a given material key */
@@ -314,93 +319,5 @@ export function getTextureForMaterial(key: MatKey): THREE.Texture {
   tex.generateMipmaps = true;
 
   textureCache.set(key, tex);
-  return tex;
-}
-
-/** Generates tactical multi-cam camouflage pattern */
-export function getCamoTexture(): THREE.Texture {
-  const hit = textureCache.get('tactical_camo');
-  if (hit) return hit;
-
-  const size = 256;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const img = ctx.createImageData(size, size);
-  const data = img.data;
-
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const idx = (y * size + x) * 4;
-      const n = fbm(x / 18, y / 18, 3, 44);
-
-      if (n > 0.65) {
-        // Dark slate
-        data[idx] = 45;
-        data[idx + 1] = 52;
-        data[idx + 2] = 58;
-      } else if (n > 0.48) {
-        // Olive drab
-        data[idx] = 78;
-        data[idx + 1] = 88;
-        data[idx + 2] = 74;
-      } else if (n > 0.32) {
-        // Khaki coyote
-        data[idx] = 115;
-        data[idx + 1] = 108;
-        data[idx + 2] = 92;
-      } else {
-        // Charcoal base
-        data[idx] = 60;
-        data[idx + 1] = 64;
-        data[idx + 2] = 68;
-      }
-      data[idx + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  textureCache.set('tactical_camo', tex);
-  return tex;
-}
-
-/** Generates ballistic carbon fiber / cordura weave texture */
-export function getCarbonTexture(): THREE.Texture {
-  const hit = textureCache.get('tactical_carbon');
-  if (hit) return hit;
-
-  const size = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const img = ctx.createImageData(size, size);
-  const data = img.data;
-
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const idx = (y * size + x) * 4;
-      const weave = ((Math.floor(x / 4) + Math.floor(y / 4)) % 2 === 0) ? 22 : -22;
-      const fine = (noise(x, y, 77) - 0.5) * 10;
-      const v = Math.max(0, Math.min(255, 38 + weave + fine));
-
-      data[idx] = v;
-      data[idx + 1] = v + 2;
-      data[idx + 2] = v + 4;
-      data[idx + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  textureCache.set('tactical_carbon', tex);
   return tex;
 }
