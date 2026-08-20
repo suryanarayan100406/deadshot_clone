@@ -1641,7 +1641,7 @@ class Game {
     const reloading = this.reloadLeft > 0 || nowLocal < this.reloadPredictUntil;
 
     this.hud.setCrosshair(this.spreadFraction(), ads, this.onTarget && this.alive);
-    this.hud.setScope(w.scoped && ads > 0.82);
+    this.hud.setScope(w.scoped && ads > 0.65);
     this.hud.setHealth(this.health);
     this.hud.setStamina(this.predictor.state.stamina ?? 1.0, (this.predictor.state.staminaCooldown ?? 0) > 0);
     this.hud.setAmmo(w.id, this.displayMag(), this.serverReserve, reloading);

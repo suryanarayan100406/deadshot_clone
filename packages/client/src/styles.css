@@ -1140,12 +1140,7 @@ select {
    ───────────────────────────────────────────────────────────────────────── */
 
 #scope {
-  --lens: 42vmin;
-  --ink: rgba(12, 16, 22, 0.95);
-  --reticle-red: #ff2818;
-  --glow-red: rgba(255, 40, 24, 0.55);
-  --telemetry: rgba(0, 240, 180, 0.85);
-  position: absolute;
+  position: fixed;
   inset: 0;
   pointer-events: none;
   overflow: hidden;
@@ -1153,292 +1148,25 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 40;
   opacity: 1;
-  transition: opacity 0.15s ease-out;
-  background: radial-gradient(
-    circle at 50% 50%,
-    transparent 0 calc(var(--lens) - 0.2vmin),
-    rgba(0, 0, 0, 0.85) calc(var(--lens) + 0.1vmin),
-    #05070a calc(var(--lens) + 1.2vmin)
-  );
+  transition: opacity 0.12s ease-out;
 }
 
 #scope.hidden {
   opacity: 0;
   pointer-events: none;
+  visibility: hidden;
 }
 
-/* ── Outer Tactical Scope Housing ───────────────────────────────────────── */
-#scope .scope-housing {
+#scope .scope-svg {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: calc(var(--lens) * 2 + 4vmin);
-  height: calc(var(--lens) * 2 + 4vmin);
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-#scope .scope-bezel {
-  position: absolute;
-  inset: 0.5vmin;
-  border-radius: 50%;
-  border: 1.4vmin solid #14171d;
-  box-shadow:
-    inset 0 0 1.2vmin rgba(0, 0, 0, 0.95),
-    inset 0 0 0 0.2vmin #2c323c,
-    0 0 2vmin rgba(0, 0, 0, 0.9);
-}
-
-#scope .scope-turret {
-  position: absolute;
-  background: linear-gradient(135deg, #242932, #101216);
-  border: 1px solid #363c48;
-  border-radius: 4px;
-  color: #8c96a6;
-  font-family: 'Encode Sans Semi Condensed', sans-serif;
-  font-size: 0.85vmin;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  padding: 0.3vmin 0.8vmin;
-  text-shadow: 0 1px 2px #000;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.7);
-}
-
-#scope .turret-top {
+  left: 0;
   top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-#scope .turret-right {
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%) rotate(90deg);
-}
-
-#scope .scope-lens-screws {
-  position: absolute;
-  inset: 0;
-}
-
-#scope .scope-lens-screws i {
-  position: absolute;
-  width: 0.8vmin;
-  height: 0.8vmin;
-  background: radial-gradient(circle, #3a424e 40%, #15181e 90%);
-  border-radius: 50%;
-  box-shadow: inset 0 0 2px #000, 0 1px 2px rgba(0,0,0,0.8);
-}
-#scope .scope-lens-screws i:nth-child(1) { top: 2.8vmin; left: 2.8vmin; }
-#scope .scope-lens-screws i:nth-child(2) { top: 2.8vmin; right: 2.8vmin; }
-#scope .scope-lens-screws i:nth-child(3) { bottom: 2.8vmin; left: 2.8vmin; }
-#scope .scope-lens-screws i:nth-child(4) { bottom: 2.8vmin; right: 2.8vmin; }
-
-/* ── Clear Lens & Glass Layer ───────────────────────────────────────────── */
-#scope .scope-lens {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: calc(var(--lens) * 2);
-  height: calc(var(--lens) * 2);
-  border-radius: 50%;
-  overflow: hidden;
-  background: transparent;
-  box-shadow:
-    inset 0 0 1.2vmin rgba(0, 240, 180, 0.18),
-    inset 0 0 2.5vmin rgba(0, 0, 0, 0.45);
-}
-
-#scope .scope-chromatic {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  box-shadow:
-    inset 0 0 1.2vmin 0.4vmin rgba(0, 230, 255, 0.15),
-    inset 0 0 1.8vmin 0.8vmin rgba(255, 0, 90, 0.12);
+  width: 100vw;
+  height: 100vh;
   pointer-events: none;
-}
-
-#scope .scope-glass {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: transparent;
-  pointer-events: none;
-}
-
-#scope .scope-glare {
-  position: absolute;
-  top: -15%;
-  left: -15%;
-  width: 130%;
-  height: 130%;
-  border-radius: 50%;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.05) 0%,
-    transparent 35%,
-    transparent 70%,
-    rgba(140, 240, 220, 0.04) 100%
-  );
-  pointer-events: none;
-}
-
-/* ── Precision Tactical Reticle Crosshairs ─────────────────────────────── */
-#scope .scope-v,
-#scope .scope-h {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  -webkit-mask-image: radial-gradient(circle at 50% 50%, transparent 0 0.9vmin, #000 1.2vmin);
-  mask-image: radial-gradient(circle at 50% 50%, transparent 0 0.9vmin, #000 1.2vmin);
-}
-
-#scope .scope-v {
-  width: 1.6vmin;
-  height: 100%;
-  background-image:
-    linear-gradient(var(--ink), var(--ink)),
-    repeating-linear-gradient(to bottom, var(--ink) 0 1.5px, transparent 1.5px 2vmin);
-  background-size: 1.5px 100%, 1.2vmin 100%;
-  background-position: center center;
-  background-repeat: no-repeat;
-}
-
-#scope .scope-h {
-  height: 1.6vmin;
-  width: 100%;
-  background-image:
-    linear-gradient(var(--ink), var(--ink)),
-    repeating-linear-gradient(to right, var(--ink) 0 1.5px, transparent 1.5px 2vmin);
-  background-size: 100% 1.5px, 100% 1.2vmin;
-  background-position: center center;
-  background-repeat: no-repeat;
-}
-
-/* Outer bold crosshair posts */
-#scope .scope-v::before,
-#scope .scope-v::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  width: 0.5vmin;
-  height: calc(var(--lens) * 0.55);
-  background: var(--ink);
-  transform: translateX(-50%);
-}
-#scope .scope-v::before { top: 0; }
-#scope .scope-v::after { bottom: 0; }
-
-#scope .scope-h::before,
-#scope .scope-h::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  height: 0.5vmin;
-  width: calc(var(--lens) * 0.55);
-  background: var(--ink);
-  transform: translateY(-50%);
-}
-#scope .scope-h::before { left: 0; }
-#scope .scope-h::after { right: 0; }
-
-/* ── Central Reticle Group & Illuminated Dot ────────────────────────────── */
-#scope .scope-reticle {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-#scope .reticle-ring {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 8vmin;
-  height: 8vmin;
-  border-radius: 50%;
-  border: 1px dashed rgba(12, 16, 22, 0.45);
-}
-
-#scope .scope-dot {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 0.45vmin;
-  height: 0.45vmin;
-  border-radius: 50%;
-  background: var(--reticle-red);
-  box-shadow:
-    0 0 0.3vmin var(--reticle-red),
-    0 0 1.0vmin var(--glow-red);
-}
-
-#scope .scope-dot::after {
-  content: '';
-  position: absolute;
-  inset: -0.5vmin;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 40, 24, 0.4);
-}
-
-/* Stadiametric Rangefinder scale on bottom-left */
-#scope .reticle-rangefinder {
-  position: absolute;
-  left: calc(50% - 14vmin);
-  bottom: calc(50% - 12vmin);
-  width: 9vmin;
-  height: 4.5vmin;
-  border-bottom: 1.5px solid var(--ink);
-}
-
-#scope .reticle-numbers {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-/* ── Scope Telemetry HUD ────────────────────────────────────────────────── */
-#scope .scope-telemetry {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  font-family: 'Encode Sans Semi Condensed', monospace;
-  font-size: 1.05vmin;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--telemetry);
-  text-shadow: 0 0 6px rgba(0, 240, 180, 0.4);
-}
-
-#scope .scope-tag {
-  position: absolute;
-  background: rgba(4, 10, 14, 0.6);
-  padding: 0.2vmin 0.6vmin;
-  border: 1px solid rgba(0, 240, 180, 0.25);
-  border-radius: 2px;
-}
-
-#scope .scope-tag-tl { top: 4.5vmin; left: 4.5vmin; }
-#scope .scope-tag-tr { top: 4.5vmin; right: 4.5vmin; }
-#scope .scope-tag-bl { bottom: 4.5vmin; left: 4.5vmin; }
-#scope .scope-tag-br {
-  bottom: 4.5vmin;
-  right: 4.5vmin;
-  color: #ffb830;
-  border-color: rgba(255, 184, 48, 0.4);
-  text-shadow: 0 0 6px rgba(255, 184, 48, 0.5);
-}
-
-#scope .scope-mask {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+  overflow: visible;
 }
 
 /* ── Damage feedback ───────────────────────────────────────────────────── */
