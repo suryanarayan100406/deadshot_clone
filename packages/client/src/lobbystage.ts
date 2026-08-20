@@ -148,6 +148,10 @@ function poseIdle(rig: CharacterRig, weapon: number, t: number, ready: boolean, 
     rig.armL.rotation.set(1.08 + breathe * 1.8, 0.36, 0.26);
     poseWeapon(rig, weapon, -0.24 + Math.sin(t * 1.6 + 0.4) * 0.02, 1);
   }
+
+  if (rig.mixer) {
+    rig.mixer.update(0.016);
+  }
 }
 
 export class LobbyStage {
