@@ -93,8 +93,8 @@ export const DEFAULTS: Settings = {
   toggleAds: false,
   toggleSprint: false,
   autoReload: true,
-  aimAssist: true,
-  aimAssistStrength: 1.0,
+  aimAssist: false,
+  aimAssistStrength: 0.5,
 
   resolution: 1,
   shadows: 1,

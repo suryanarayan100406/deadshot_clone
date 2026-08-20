@@ -1537,12 +1537,14 @@ class Game {
    */
   private applyAimAssist(dt: number, eye: Vec3): void {
     if (!this.alive || !this.settings.get('aimAssist')) return;
-    const strength = this.settings.get('aimAssistStrength') ?? 1.0;
+    const strength = this.settings.get('aimAssistStrength') ?? 0.5;
     if (strength <= 0.01) return;
 
     const w = this.viewModel.currentWeapon;
     const ads = this.viewModel.adsFactor;
-    const isScoped = w.scoped && ads > 0.4;
+    // Only assist when deliberately aiming down sights, NEVER during free navigation/hip-fire
+    if (ads < 0.45) return;
+    const isScoped = w.scoped && ads > 0.6;
 
     const yaw = this.input.yaw;
     const pitch = this.input.pitch;

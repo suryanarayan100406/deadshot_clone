@@ -249,10 +249,11 @@ export class InputManager {
 
   private onMouseMove(e: MouseEvent): void {
     if (!this.locked) return;
-    // movementX/Y are already relative under pointer lock, and are the only
-    // values that keep working once the cursor hits a screen edge.
-    this.dx += e.movementX;
-    this.dy += e.movementY;
+    // Filter out rogue multi-hundred pixel jump spikes caused by browser pointerlock wrapping bugs
+    const mx = clamp(e.movementX, -300, 300);
+    const my = clamp(e.movementY, -300, 300);
+    this.dx += mx;
+    this.dy += my;
   }
 
   private onWheel(e: WheelEvent): void {

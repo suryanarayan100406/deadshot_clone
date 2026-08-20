@@ -164,13 +164,25 @@ export function moveWithCollision(
     pos.y = ny;
   }
 
-  // Step-down snapping: when walking down stairs at speed, keep feet planted
+  // Step-down snapping: when walking down stairs at speed, keep feet planted on the highest floor surface
   if (wasGrounded && !result.onGround && vel.y <= 0.0001 && stepHeight > 0) {
     setPlayerBox(scratch, pos.x, pos.y - stepHeight, pos.z, radius, height);
     scratch.maxY = pos.y;
-    const downHit = firstOverlap(scratch, brushes);
-    if (downHit && downHit.maxY <= pos.y && downHit.maxY >= pos.y - stepHeight) {
-      pos.y = downHit.maxY + SKIN;
+    let highestY = -Infinity;
+    let found = false;
+    for (let i = 0; i < brushes.length; i++) {
+      const o = brushes[i]!;
+      if (boxOverlap(scratch, o)) {
+        if (o.maxY <= pos.y + 0.001 && o.maxY >= pos.y - stepHeight) {
+          if (o.maxY > highestY) {
+            highestY = o.maxY;
+            found = true;
+          }
+        }
+      }
+    }
+    if (found) {
+      pos.y = highestY + SKIN;
       result.onGround = true;
       vel.y = 0;
     }
