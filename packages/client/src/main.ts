@@ -1554,8 +1554,8 @@ class Game {
     let hasTarget = false;
     let bestScore = Infinity;
 
-    // Angle cone: wider at hip for friction, tight and focused in ADS / scope
-    const maxAngleRad = (isScoped ? 20 : ads > 0 ? 25 : 18) * (Math.PI / 180);
+    // Angle cone: subtle and tight, authentic to modern competitive FPS games
+    const maxAngleRad = (isScoped ? 4.0 : ads > 0.2 ? 6.0 : 4.5) * (Math.PI / 180);
     const minDot = Math.cos(maxAngleRad);
 
     this.actors.forEach((a) => {
@@ -1606,10 +1606,11 @@ class Game {
     });
 
     if (hasTarget) {
-      // Smooth magnetic pull with proximity boost
+      // Gentle, natural magnetic friction and micro-aim tracking
       const proximity = Math.max(0, 1.0 - bestAngDist / maxAngleRad);
-      const baseRate = isScoped ? 22.0 : ads > 0.2 ? 16.0 : 8.5;
-      const pull = Math.min(0.85, dt * baseRate * strength * Math.pow(proximity, 1.15));
+      const baseRate = isScoped ? 2.4 : ads > 0.2 ? 3.2 : 1.8;
+      const maxPull = isScoped ? 0.06 : ads > 0.2 ? 0.08 : 0.05;
+      const pull = Math.min(maxPull, dt * baseRate * strength * Math.pow(proximity, 2.0));
 
       this.input.yaw = wrapAngle(this.input.yaw + bestDYaw * pull);
       this.input.pitch = clamp(this.input.pitch + bestDPitch * pull, -PITCH_LIMIT, PITCH_LIMIT);
