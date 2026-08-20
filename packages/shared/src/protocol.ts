@@ -112,6 +112,8 @@ export const LOBBY_ACT = {
   BOTS: 2,
   /** Anyone: flip their own ready state. */
   READY: 3,
+  /** Host: change map. `value` is mapId. */
+  MAP: 4,
 } as const;
 
 // ── Client → Server ──────────────────────────────────────────────────────────
@@ -689,20 +691,29 @@ export interface LobbyMsg {
   flags: number;
   /** Milliseconds until the match starts, or 0 when no countdown is running. */
   countdown: number;
+  /** The selected map id. */
+  mapId: number;
 }
 
 export function encodeLobby(m: LobbyMsg): Uint8Array {
-  const w = new ByteWriter(12);
+  const w = new ByteWriter(16);
   w.u8v(MSG.S_LOBBY)
     .u8v(m.phase)
     .u16v(m.hostId)
     .u8v(m.flags)
-    .u16v(Math.max(0, Math.min(65535, Math.round(m.countdown))));
+    .u16v(Math.max(0, Math.min(65535, Math.round(m.countdown))))
+    .u8v(m.mapId);
   return w.take();
 }
 
 export function decodeLobby(r: ByteReader): LobbyMsg {
-  return { phase: r.u8v(), hostId: r.u16v(), flags: r.u8v(), countdown: r.u16v() };
+  return {
+    phase: r.u8v(),
+    hostId: r.u16v(),
+    flags: r.u8v(),
+    countdown: r.u16v(),
+    mapId: r.u8v(),
+  };
 }
 
 export { BTN };

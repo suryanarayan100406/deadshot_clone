@@ -339,8 +339,21 @@
     <div id="lobby-screen" class="hidden">
       <header class="ls-top">
         <div class="ls-titles">
-          <div class="ls-title">LOBBY</div>
-          <div class="ls-sub"><span id="lb-mode">Free For All</span> · <span id="lb-map">Dustworks</span></div>
+          <div class="ls-title">LOBBY <span class="ls-badge hidden" id="lb-admin-badge">HOST ADMIN</span></div>
+          <div class="ls-sub">
+            <span id="lb-mode">Team Deathmatch</span> · 
+            <span id="lb-map-wrapper">
+              <span id="lb-map">Dustworks</span>
+              <select id="lb-map-select" class="ls-map-select hidden">
+                <option value="0">Coastal Fortress / Dustworks</option>
+                <option value="1">Industrial Foundry</option>
+                <option value="2">Urban Highway / Overpass</option>
+                <option value="3">Tactical Base / Meridian</option>
+                <option value="4">Underground Cistern</option>
+                <option value="5">Coastal Refinery</option>
+              </select>
+            </span>
+          </div>
         </div>
 
         <div class="ls-invite" id="lb-invite">

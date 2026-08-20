@@ -307,6 +307,7 @@ class Game {
       {
         onStart: () => this.net.sendLobby(LOBBY_ACT.START),
         onBots: (on) => this.net.sendLobby(LOBBY_ACT.BOTS, on ? 1 : 0),
+        onMap: (mapId) => this.net.sendLobby(LOBBY_ACT.MAP, mapId),
         onReady: () => this.net.sendLobby(LOBBY_ACT.READY),
         onLeave: () => this.quit(),
         // The screen owns no input state; it only says when it is up, and the
@@ -515,7 +516,7 @@ class Game {
 
     this.hud.setSelfId(m.id);
     this.hud.setContext(m.mode, m.room, map.name);
-    this.lobby.setContext(m.mode, map.name, m.room, m.id);
+    this.lobby.setContext(m.mode, map.name, m.room, m.id, map.id);
     this.actors.setContext(this.myTeam, this.teamMode);
     this.names.set(m.id, this.myName);
 
@@ -1064,6 +1065,15 @@ class Game {
   }
 
   private onLobby(m: LobbyMsg): void {
+    if (m.mapId !== undefined) {
+      const map = mapById(m.mapId);
+      if (map && this.world.currentMap?.id !== map.id) {
+        this.loadMap(map);
+        this.hud.setContext(this.mode, this.room, map.name);
+        this.lobby.setMap(map.id, map.name);
+        this.hud.toast(`Map changed to ${map.name}`, 'info');
+      }
+    }
     this.lobby.setLobby(m);
   }
 

@@ -51,6 +51,8 @@ export interface LobbyHooks {
   onStart(): void;
   /** Host flipped bot fill. */
   onBots(on: boolean): void;
+  /** Host changed the map. */
+  onMap(mapId: number): void;
   /** Anyone flipped their own ready state. */
   onReady(): void;
   /** Somebody wants out before the match begins. */
@@ -72,7 +74,7 @@ function el<T extends HTMLElement>(id: string): T {
 }
 
 /** Nothing on screen. The state a client in a public room sits in forever. */
-const CLOSED: LobbyMsg = { phase: PHASE.LIVE, hostId: 0, flags: 0, countdown: 0 };
+const CLOSED: LobbyMsg = { phase: PHASE.LIVE, hostId: 0, flags: 0, countdown: 0, mapId: 0 };
 
 export class LobbyScreen {
   private hooks: LobbyHooks;
@@ -81,6 +83,8 @@ export class LobbyScreen {
   private root = el('lobby-screen');
   private modeEl = el('lb-mode');
   private mapEl = el('lb-map');
+  private mapSelect = el<HTMLSelectElement>('lb-map-select');
+  private adminBadge = el('lb-admin-badge');
   private codeEl = el('lb-code');
   private inviteRow = el('lb-invite');
   private countEl = el('lb-count');
@@ -100,6 +104,7 @@ export class LobbyScreen {
   private selfId = -1;
   private teamMode = false;
   private room = '';
+  private mapId = 0;
   /** What the screen last reported through `onVisibility`, so edges fire once. */
   private reportedOpen = false;
   /**
@@ -125,6 +130,10 @@ export class LobbyScreen {
       // repainted from the server's answer, so a rejected request corrects itself.
       this.hooks.onBots((this.state.flags & LF.BOTS) === 0);
     });
+    this.mapSelect.addEventListener('change', () => {
+      const id = Number(this.mapSelect.value);
+      if (!Number.isNaN(id)) this.hooks.onMap(id);
+    });
     this.copyBtn.addEventListener('click', () => void this.copyInvite());
   }
 
@@ -141,11 +150,13 @@ export class LobbyScreen {
   /* ── Context ──────────────────────────────────────────────────────────────── */
 
   /** Called once per match on the welcome packet. */
-  setContext(mode: number, mapName: string, room: string, selfId: number): void {
+  setContext(mode: number, mapName: string, room: string, selfId: number, mapId = 0): void {
     // The mode id rather than its label, so nothing here depends on the spelling
     // of a string that exists to be read by a human.
     this.modeEl.textContent = MODE_NAMES[mode] ?? 'Match';
     this.mapEl.textContent = mapName;
+    this.mapId = mapId;
+    this.mapSelect.value = String(mapId);
     this.teamMode = mode === MODE.TDM;
     this.room = room;
     this.selfId = selfId;
@@ -157,10 +168,20 @@ export class LobbyScreen {
     this.render();
   }
 
+  setMap(mapId: number, mapName: string): void {
+    this.mapId = mapId;
+    this.mapEl.textContent = mapName;
+    this.mapSelect.value = String(mapId);
+  }
+
   /* ── Server state ─────────────────────────────────────────────────────────── */
 
   setLobby(m: LobbyMsg): void {
     this.state = m;
+    if (m.mapId !== undefined && m.mapId !== this.mapId) {
+      this.mapId = m.mapId;
+      this.mapSelect.value = String(m.mapId);
+    }
     this.cdEnd = m.countdown > 0 ? performance.now() + m.countdown : 0;
     this.render();
   }
@@ -272,6 +293,12 @@ export class LobbyScreen {
     this.countEl.textContent = `${this.roster.length} / ${MAX_PLAYERS}`;
     this.tallyEl.textContent = humans > 0 ? `${ready} of ${humans} ready` : 'Nobody here yet';
     this.tallyEl.classList.toggle('all', humans > 0 && ready === humans);
+
+    // Host / Admin map selection permissions
+    this.adminBadge.classList.toggle('hidden', !isHost);
+    this.mapSelect.classList.toggle('hidden', !isHost);
+    this.mapEl.classList.toggle('hidden', isHost);
+    this.mapSelect.value = String(this.mapId);
 
     // Bots are the host's decision, so everyone can see the setting and only the
     // host can move it — a locked switch explains the room, a hidden one does not.

@@ -125,8 +125,8 @@ function sanitizeChat(text: string): string {
 export class Room {
   readonly id: string;
   readonly mode: number;
-  readonly map: GameMap;
-  readonly colliders: Box[];
+  map: GameMap;
+  colliders: Box[];
   /**
    * True when a client asked for this room by name, i.e. it is a party.
    *
@@ -527,6 +527,20 @@ export class Room {
         this.markRosterDirty();
         this.lobbyDirty = true;
         return;
+
+      case LOBBY_ACT.MAP: {
+        if (!isHost) return;
+        const nextMap = mapById(value);
+        if (!nextMap || nextMap.id === this.map.id) return;
+        this.map = nextMap;
+        this.colliders = mapColliders(this.map);
+        for (const pl of this.players.values()) {
+          if (pl.alive) this.spawn(pl, now);
+        }
+        this.lobbyDirty = true;
+        this.pushChat(p, `Host changed map to ${this.map.name}`);
+        return;
+      }
 
       default:
         return;
@@ -1197,6 +1211,7 @@ export class Room {
       hostId: this.hostId,
       flags: this.lobbyFlags(),
       countdown: this.startAt > 0 ? Math.max(0, this.startAt - now) : 0,
+      mapId: this.map.id,
     });
     for (const p of this.players.values()) if (!p.isBot) p.send(packet);
   }

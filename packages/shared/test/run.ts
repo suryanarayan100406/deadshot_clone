@@ -1103,6 +1103,7 @@ suite('lobby round trip', () => {
     hostId: 40_000,
     flags: LF.BOTS | LF.PARTY,
     countdown: 4_250,
+    mapId: 2,
   };
   const first = encodeLobby(msg);
   const back = decodeLobby(afterTag(first));
@@ -1110,6 +1111,7 @@ suite('lobby round trip', () => {
   check(back.hostId === msg.hostId, 'a high host id is not truncated');
   check(back.flags === msg.flags, 'both room flags survive');
   check(back.countdown === msg.countdown, 'the countdown survives to the millisecond');
+  check(back.mapId === msg.mapId, 'the map id survives');
   sameBytes(first, encodeLobby(back), 'lobby state re-encodes identically');
 
   // The countdown is a u16, so it saturates rather than wrapping — a value that

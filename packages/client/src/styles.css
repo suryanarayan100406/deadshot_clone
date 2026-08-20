@@ -2147,16 +2147,67 @@ select {
 }
 
 .ls-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   font-size: clamp(22px, 3vw, 30px);
   font-weight: 800;
   letter-spacing: 0.16em;
   color: var(--gold);
 }
 
+.ls-badge {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(0, 240, 180, 0.15);
+  color: #00f0b4;
+  border: 1px solid rgba(0, 240, 180, 0.4);
+  box-shadow: 0 0 10px rgba(0, 240, 180, 0.2);
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+
 .ls-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-body);
   font-size: 14px;
   color: rgba(255, 255, 255, 0.55);
+}
+
+#lb-map-wrapper {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ls-map-select {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(14, 18, 24, 0.95);
+  border: 1px solid rgba(0, 240, 180, 0.5);
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-shadow: 0 0 8px rgba(0, 240, 180, 0.2);
+}
+
+.ls-map-select:hover, .ls-map-select:focus {
+  border-color: #00f0b4;
+  box-shadow: 0 0 12px rgba(0, 240, 180, 0.4);
+}
+
+.ls-map-select option {
+  background: #0e1218;
+  color: #fff;
 }
 
 .ls-leave {
