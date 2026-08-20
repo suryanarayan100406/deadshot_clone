@@ -426,6 +426,253 @@ function building(
   wall(out, 'z', x1, z0, z1, ry, 0.9, t, roofMat);
 }
 
+export interface WindowSpec {
+  at: number;
+  width: number;
+  sillY: number;
+  height: number;
+}
+
+/**
+ * A wall with optional doorways and windows that players can look and shoot through.
+ */
+function wallWithOpenings(
+  out: Brush[],
+  axis: 'x' | 'z',
+  fixed: number,
+  from: number,
+  to: number,
+  y: number,
+  h: number,
+  thick: number,
+  mat: MatKey,
+  door?: Door,
+  windows?: WindowSpec[],
+): void {
+  if (!door && (!windows || windows.length === 0)) {
+    const len = to - from;
+    const mid = (from + to) / 2;
+    if (axis === 'x') br(out, mid, y, fixed, len, h, thick, mat);
+    else br(out, fixed, y, mid, thick, h, len, mat);
+    return;
+  }
+
+  interface Cutout {
+    start: number;
+    end: number;
+    bottomH: number;
+    topY: number;
+  }
+  const cuts: Cutout[] = [];
+  if (door) {
+    cuts.push({
+      start: door.at - door.width / 2,
+      end: door.at + door.width / 2,
+      bottomH: 0,
+      topY: y + door.height,
+    });
+  }
+  if (windows) {
+    for (const w of windows) {
+      cuts.push({
+        start: w.at - w.width / 2,
+        end: w.at + w.width / 2,
+        bottomH: w.sillY,
+        topY: y + w.sillY + w.height,
+      });
+    }
+  }
+
+  cuts.sort((a, b) => a.start - b.start);
+
+  let cur = from;
+  for (const c of cuts) {
+    const c0 = Math.max(from, c.start);
+    const c1 = Math.min(to, c.end);
+    if (c0 > cur) {
+      const len = c0 - cur;
+      const mid = (cur + c0) / 2;
+      if (axis === 'x') br(out, mid, y, fixed, len, h, thick, mat);
+      else br(out, fixed, y, mid, thick, h, len, mat);
+    }
+    if (c1 > c0) {
+      if (c.bottomH > 0.01) {
+        const len = c1 - c0;
+        const mid = (c0 + c1) / 2;
+        if (axis === 'x') br(out, mid, y, fixed, len, c.bottomH, thick, mat);
+        else br(out, fixed, y, mid, thick, c.bottomH, len, mat);
+      }
+      if (y + h > c.topY) {
+        const len = c1 - c0;
+        const mid = (c0 + c1) / 2;
+        const lintelH = y + h - c.topY;
+        if (axis === 'x') br(out, mid, c.topY, fixed, len, lintelH, thick, mat);
+        else br(out, fixed, c.topY, mid, thick, lintelH, len, mat);
+      }
+    }
+    cur = Math.max(cur, c1);
+  }
+
+  if (cur < to) {
+    const len = to - cur;
+    const mid = (cur + to) / 2;
+    if (axis === 'x') br(out, mid, y, fixed, len, h, thick, mat);
+    else br(out, fixed, y, mid, thick, h, len, mat);
+  }
+}
+
+/**
+ * A grand multi-story walkable building/house.
+ * - Ground Floor with entry doors, rooms, shooting windows, and tactical tables
+ * - Interior Staircase to 2nd Floor
+ * - 2nd Floor with interior rooms, windows, and outdoor shooting balcony
+ * - 2nd Staircase up to Rooftop
+ * - Rooftop Terrace with parapets, penthouse exit, HVAC chillers, and satellite antennas
+ */
+function multiStoryBuilding(
+  b: Brush[],
+  p: Prop[],
+  cx: number,
+  cz: number,
+  w: number,
+  d: number,
+  fl1H = 3.6,
+  fl2H = 3.6,
+  wallMat: MatKey = 'concrete',
+  roofMat: MatKey = 'concreteDark',
+  balconySide: 'north' | 'south' | 'east' | 'west' = 'north',
+): void {
+  const t = 0.5;
+  const x0 = cx - w / 2;
+  const x1 = cx + w / 2;
+  const z0 = cz - d / 2;
+  const z1 = cz + d / 2;
+
+  // ── Level 1 (Ground Floor: y = 0 to fl1H) ──────────────────────────────────
+  const mainDoor: Door = { at: cx, width: 3.2, height: 2.6 };
+  const sideDoor: Door = { at: cz, width: 2.4, height: 2.5 };
+  const winL1: WindowSpec[] = [
+    { at: cx - w * 0.28, width: 2.2, sillY: 1.0, height: 1.4 },
+    { at: cx + w * 0.28, width: 2.2, sillY: 1.0, height: 1.4 },
+  ];
+  const winSideL1: WindowSpec[] = [
+    { at: cz - d * 0.25, width: 2.0, sillY: 1.0, height: 1.4 },
+    { at: cz + d * 0.25, width: 2.0, sillY: 1.0, height: 1.4 },
+  ];
+
+  wallWithOpenings(b, 'x', z0, x0, x1, 0, fl1H, t, wallMat, balconySide === 'north' ? mainDoor : undefined, winL1);
+  wallWithOpenings(b, 'x', z1, x0, x1, 0, fl1H, t, wallMat, balconySide === 'south' ? mainDoor : undefined, winL1);
+  wallWithOpenings(b, 'z', x0, z0, z1, 0, fl1H, t, wallMat, balconySide === 'west' ? sideDoor : undefined, winSideL1);
+  wallWithOpenings(b, 'z', x1, z0, z1, 0, fl1H, t, wallMat, balconySide === 'east' ? sideDoor : undefined, winSideL1);
+
+  // Interior dividing wall separating Ground Floor into 2 tactical rooms
+  const partX = cx;
+  wall(b, 'z', partX, z0 + 1, z1 - 1, 0, fl1H, 0.4, 'concreteDark', { at: cz, width: 2.6, height: 2.5 });
+
+  // Interior Ground Floor furniture & cover
+  br(b, cx - w * 0.25, 0, cz - d * 0.2, 2.6, 1.0, 2.0, 'wood');
+  br(b, cx - w * 0.25, 0, cz + d * 0.25, 1.8, 1.8, 1.8, 'rust');
+  br(b, cx + w * 0.25, 0, cz + d * 0.25, 2.2, 1.2, 1.6, 'wood');
+  barrel(p, cx + w * 0.35, 0, cz - d * 0.3, 'paint');
+  barrel(p, cx + w * 0.35, 0, cz - d * 0.2, 'rust');
+
+  lamp(p, cx - w * 0.25, fl1H - 0.05, cz, 0.35);
+  lamp(p, cx + w * 0.25, fl1H - 0.05, cz, 0.35);
+
+  // ── Ground Floor to 2nd Floor Staircase ───────────────────────────────────
+  const stairW = 2.4;
+  const stairSteps = 12;
+  const stairStepH = fl1H / stairSteps;
+  const stairStepD = 0.45;
+  const stairLen = stairSteps * stairStepD;
+  const stairX = cx + w * 0.25;
+  const stairZ0 = z0 + 1.2;
+  stairs(b, stairX, 0, stairZ0, 'z+', stairSteps, stairStepH, stairStepD, stairW, 'concreteDark');
+
+  // ── Level 2 Floor Slab (y = fl1H) ─────────────────────────────────────────
+  const slabT = 0.4;
+  const fl2Y = fl1H + slabT;
+  // Left half of floor (solid)
+  br(b, cx - w * 0.25, fl1H, cz, w * 0.5 + t, slabT, d + t, roofMat);
+  // Right half front (solid in front of stairwell)
+  br(b, cx + w * 0.25, fl1H, z1 - (d - stairLen - 1.5) * 0.5, w * 0.5 + t, slabT, Math.max(1, d - stairLen - 1.5), roofMat);
+
+  // Stairwell guardrail on 2nd floor
+  guard(b, p, 'z', stairX - stairW * 0.5 - 0.1, stairZ0, stairZ0 + stairLen, fl2Y, 'metal');
+
+  // ── Level 2 (Second Floor: y = fl2Y to fl2Y + fl2H) ────────────────────────
+  const winL2: WindowSpec[] = [
+    { at: cx - w * 0.28, width: 2.4, sillY: 1.0, height: 1.4 },
+    { at: cx + w * 0.28, width: 2.4, sillY: 1.0, height: 1.4 },
+  ];
+  const winSideL2: WindowSpec[] = [
+    { at: cz - d * 0.25, width: 2.2, sillY: 1.0, height: 1.4 },
+    { at: cz + d * 0.25, width: 2.2, sillY: 1.0, height: 1.4 },
+  ];
+  const balconyDoor: Door = { at: cx, width: 2.6, height: 2.5 };
+
+  wallWithOpenings(b, 'x', z0, x0, x1, fl2Y, fl2H, t, wallMat, balconySide === 'north' ? balconyDoor : undefined, winL2);
+  wallWithOpenings(b, 'x', z1, x0, x1, fl2Y, fl2H, t, wallMat, balconySide === 'south' ? balconyDoor : undefined, winL2);
+  wallWithOpenings(b, 'z', x0, z0, z1, fl2Y, fl2H, t, wallMat, balconySide === 'west' ? balconyDoor : undefined, winSideL2);
+  wallWithOpenings(b, 'z', x1, z0, z1, fl2Y, fl2H, t, wallMat, balconySide === 'east' ? balconyDoor : undefined, winSideL2);
+
+  // 2nd Floor Cantilevered Balcony Terrace
+  const balcDepth = 2.4;
+  const balcWidth = w * 0.65;
+  const balcCX = cx;
+  if (balconySide === 'north') {
+    const balcCZ = z0 - balcDepth * 0.5;
+    br(b, balcCX, fl1H, balcCZ, balcWidth, slabT, balcDepth, roofMat);
+    wall(b, 'x', z0 - balcDepth, balcCX - balcWidth * 0.5, balcCX + balcWidth * 0.5, fl2Y, 1.0, 0.3, wallMat);
+    wall(b, 'z', balcCX - balcWidth * 0.5, z0 - balcDepth, z0, fl2Y, 1.0, 0.3, wallMat);
+    wall(b, 'z', balcCX + balcWidth * 0.5, z0 - balcDepth, z0, fl2Y, 1.0, 0.3, wallMat);
+  } else if (balconySide === 'south') {
+    const balcCZ = z1 + balcDepth * 0.5;
+    br(b, balcCX, fl1H, balcCZ, balcWidth, slabT, balcDepth, roofMat);
+    wall(b, 'x', z1 + balcDepth, balcCX - balcWidth * 0.5, balcCX + balcWidth * 0.5, fl2Y, 1.0, 0.3, wallMat);
+    wall(b, 'z', balcCX - balcWidth * 0.5, z1, z1 + balcDepth, fl2Y, 1.0, 0.3, wallMat);
+    wall(b, 'z', balcCX + balcWidth * 0.5, z1, z1 + balcDepth, fl2Y, 1.0, 0.3, wallMat);
+  }
+
+  br(b, cx - w * 0.25, fl2Y, cz + d * 0.25, 2.2, 1.1, 2.2, 'rust');
+  lamp(p, cx - w * 0.25, fl2Y + fl2H - 0.05, cz, 0.35);
+
+  // ── 2nd Floor to Rooftop Staircase ────────────────────────────────────────
+  const stair2X = cx - w * 0.25;
+  const stair2Z0 = z1 - 1.2;
+  stairs(b, stair2X, fl2Y, stair2Z0, 'z-', stairSteps, fl2H / stairSteps, stairStepD, stairW, 'concreteDark');
+
+  // ── Rooftop Terrace (y = fl2Y + fl2H) ─────────────────────────────────────
+  const roofY = fl2Y + fl2H;
+  const roofWalkY = roofY + slabT;
+  br(b, cx, roofY, cz, w + t * 2, slabT, d + t * 2, roofMat);
+
+  // Stairwell penthouse enclosure on roof
+  const pentW = stairW + 1.2;
+  const pentD = stairLen * 0.7;
+  const pentH = 2.4;
+  building(b, stair2X, stair2Z0 - pentD * 0.5, pentW, pentD, pentH, wallMat, roofMat, { south: true });
+
+  // Perimeter parapets with sniper peek slots
+  const pWallH = 0.95;
+  wall(b, 'x', z0 - t, x0 - t, x1 + t, roofWalkY, pWallH, t, wallMat);
+  wall(b, 'x', z1 + t, x0 - t, x1 + t, roofWalkY, pWallH, t, wallMat);
+  wall(b, 'z', x0 - t, z0 - t, z1 + t, roofWalkY, pWallH, t, wallMat);
+  wall(b, 'z', x1 + t, z0 - t, z1 + t, roofWalkY, pWallH, t, wallMat);
+
+  // ── Tactical Rooftop Equipment Props ──────────────────────────────────────
+  roundColumn(p, cx + w * 0.2, roofWalkY, cz - d * 0.2, 0.95, 1.4, 'metal', 'metalDark');
+  roundColumn(p, cx + w * 0.2, roofWalkY, cz - d * 0.05, 0.95, 1.4, 'metal', 'metalDark');
+  br(b, cx + w * 0.2, roofWalkY, cz - d * 0.125, 2.6, 1.2, 4.2, 'metalDark');
+
+  pr(p, 'cyl', cx + w * 0.28, roofWalkY, cz + d * 0.25, 0.22, 2.7, 'metalDark', 'y', true);
+  pr(p, 'dome', cx + w * 0.28, roofWalkY + 2.7, cz + d * 0.25, 1.3, 0.5, 'metal');
+  pipe(p, 'z', cz + d * 0.15, cz + d * 0.35, roofWalkY + 2.7, cx + w * 0.28, 0.07, 'paint');
+
+  pr(p, 'cyl', cx - w * 0.35, roofWalkY, cz + d * 0.3, 0.12, 6.5, 'metalDark', 'y', true);
+  pr(p, 'sphere', cx - w * 0.35, roofWalkY + 6.5, cz + d * 0.3, 0.16, 0, 'light');
+}
+
 /**
  * A wall's capping band and pilasters.
  *
@@ -787,45 +1034,23 @@ function buildDustworks(): GameMap {
   pr(p, 'cyl', 0, TANK_Y + 5.7, 0, 0.09, 2.6, 'metalDark');
   ladder(p, LEG, PH, LEG, TANK_Y, 'x');
 
-  // ── Four corner blockhouses ───────────────────────────────────────────────
+  // ── Grand Multi-Story Walkable Tactical Compounds ───────────────────────
   const C = 23;
   const BW = 14;
-  const BH = 5;
-  const ROOF = BH + 0.4;
-  const PARAPET = ROOF + 0.9;
   for (const [sx, sz] of CORNERS) {
-    building(b, C * sx, C * sz, BW, BW, BH, 'concrete', 'concreteDark', {
-      north: sz > 0,
-      south: sz < 0,
-      east: sx < 0,
-      west: sx > 0,
-    });
-
-    // External stair up the outer face, run to parapet height so the walk onto the
-    // roof is a step over and a 0.9 m drop rather than a blocked climb.
-    const n = 19;
-    const outer = (C + BW / 2 + 0.25) * sz;
-    stairs(b, C * sx, 0, outer + 19 * 0.42 * sz, sz > 0 ? 'z-' : 'z+', n, PARAPET / n, 0.42, 3.4, 'wood');
-
-    // Interior: a crate to break the room up, drums in the corner, a wall lamp.
-    br(b, (C - 4.6) * sx, 0, (C - 4.6) * sz, 2, 1.2, 2, 'wood');
-    br(b, (C + 4.4) * sx, 0, (C + 4.4) * sz, 1.4, 2.4, 1.4, 'rust');
-    barrel(p, (C + 4.6) * sx, 0, (C - 4.2) * sz, 'rust');
-    barrel(p, (C + 5.3) * sx, 0, (C - 4.6) * sz, 'paint');
-    lamp(p, C * sx, BH - 0.05, C * sz, 0.35);
-
-    // Roof furniture. Anything standing on a roof is reachable, so it is either
-    // solid or it is a `roundColumn` — a decorative box on a surface a player can
-    // walk on is the "shot it and nothing happened" bug, and the rules reject it.
-    roundColumn(p, (C - 3.5) * sx, ROOF, (C - 3.5) * sz, 1.0, 1.2, 'metal', 'metalDark');
-    pr(p, 'cyl', (C + 3.8) * sx, ROOF, (C + 3.8) * sz, 0.55, 2.8, 'rust', 'y', true);
-    pr(p, 'dome', (C + 3.8) * sx, ROOF + 2.8, (C + 3.8) * sz, 0.55, 0.4, 'rust');
-    // Conduit along the roof edge, flush to the parapet it runs on. Both ends have
-    // to be mirrored with the building, not just one — a run written `*1` sits on
-    // the correct parapet for two of the four corners and in mid-air for the others.
-    const e0 = (C - BW / 2) * sx;
-    const e1 = (C + BW / 2) * sx;
-    pipe(p, 'x', Math.min(e0, e1), Math.max(e0, e1), ROOF + 0.55, (C + BW / 2 + 0.05) * sz, 0.09, 'metal');
+    multiStoryBuilding(
+      b,
+      p,
+      C * sx,
+      C * sz,
+      BW,
+      BW,
+      3.6,
+      3.6,
+      'concrete',
+      'concreteDark',
+      sz > 0 ? 'north' : 'south',
+    );
   }
 
   // ── Mid-field cover: four L-walls forming rotational half-cover ────────────

@@ -184,15 +184,24 @@ export function buildCharacter(shadows: boolean): CharacterRig {
   const ownedGeo: THREE.BufferGeometry[] = [];
 
   const bodyMat = new THREE.MeshLambertMaterial({ color: NEUTRAL_COLOR });
-  const trimMat = new THREE.MeshLambertMaterial({ color: 0x2f3238 });
-  // Gear is Phong with a low shine so webbing, helmets and boots separate from the
-  // flat team colour. The team surfaces stay Lambert on purpose: a specular roll
-  // across the one colour that tells you whether to shoot would be a readability
-  // regression dressed up as fidelity.
+  const trimMat = new THREE.MeshLambertMaterial({ color: 0x282c32 });
+  const camoMat = new THREE.MeshLambertMaterial({ color: 0x3a4049 });
   const gearMat = new THREE.MeshPhongMaterial({
-    color: 0x23262b,
-    specular: 0x3c4148,
-    shininess: 26,
+    color: 0x1a1d22,
+    specular: 0x444c58,
+    shininess: 32,
+  });
+  const lensMat = new THREE.MeshPhongMaterial({
+    color: 0x102824,
+    specular: 0x70ffd0,
+    shininess: 110,
+    transparent: true,
+    opacity: 0.92,
+  });
+  const metalMat = new THREE.MeshPhongMaterial({
+    color: 0x78828e,
+    specular: 0xd8e0ea,
+    shininess: 90,
   });
 
   const box = (sx: number, sy: number, sz: number, mat: THREE.Material) => {
@@ -214,92 +223,127 @@ export function buildCharacter(shadows: boolean): CharacterRig {
     x: number,
     y: number,
     z: number,
+    rx = 0,
+    ry = 0,
+    rz = 0,
   ): THREE.Mesh => {
     const m = box(sx, sy, sz, mat);
     m.position.set(x, y, z);
+    m.rotation.set(rx, ry, rz);
     parent.add(m);
     return m;
   };
 
-  // Proportions derive from the shared collider: 1.8 m tall, 0.8 m wide. The head
-  // sits at the crown so the visible head matches HEAD_BOX exactly.
-  const head = box(HEAD_BOX, HEAD_BOX, HEAD_BOX, bodyMat);
-  const visor = box(HEAD_BOX * 0.82, HEAD_BOX * 0.3, 0.02, trimMat);
-  const torso = box(0.44, 0.56, 0.26, bodyMat);
+  // Proportions derive from the shared collider: 1.8 m tall, 0.8 m wide.
+  const head = box(HEAD_BOX, HEAD_BOX, HEAD_BOX, trimMat); // Balaclava head base
+  const visor = box(HEAD_BOX * 0.84, HEAD_BOX * 0.28, 0.024, lensMat);
+  const torso = box(0.44, 0.56, 0.26, camoMat);
   const hips = box(0.38, 0.16, 0.24, trimMat);
-  const armL = box(0.12, 0.5, 0.12, trimMat);
-  const armR = box(0.12, 0.5, 0.12, trimMat);
-  const legL = box(0.15, 0.72, 0.16, trimMat);
-  const legR = box(0.15, 0.72, 0.16, trimMat);
-  const gun = box(0.07, 0.09, 0.44, trimMat);
+  const armL = box(0.12, 0.5, 0.12, camoMat);
+  const armR = box(0.12, 0.5, 0.12, camoMat);
+  const legL = box(0.15, 0.72, 0.16, camoMat);
+  const legR = box(0.15, 0.72, 0.16, camoMat);
+  const gun = box(0.06, 0.08, 0.44, gearMat);
 
-  // Pivot the limbs at the shoulder/hip by offsetting the mesh inside a group —
-  // rotating a centred box would swing it from the middle.
   armL.geometry.translate(0, -0.25, 0);
   armR.geometry.translate(0, -0.25, 0);
   legL.geometry.translate(0, -0.36, 0);
   legR.geometry.translate(0, -0.36, 0);
 
-  // ── Gear ──────────────────────────────────────────────────────────────────
+  // ── Tactical Helmet & Special-Ops Headwear ─────────────────────────────────
   const H = HEAD_BOX;
-  detail(head, H * 1.0, H * 0.5, H * 1.0, gearMat, 0, H * 0.24, 0);
-  // Crown plate in team colour — the surface most often seen from above and across
-  // the map, so it is the one that carries the identification.
-  detail(head, H * 0.72, H * 0.1, H * 0.78, bodyMat, 0, H * 0.46, 0);
-  // Brim over the visor, ear cups either side, mandible below.
-  detail(head, H * 0.94, H * 0.1, H * 0.16, gearMat, 0, H * 0.08, -H * 0.42);
-  detail(head, H * 0.12, H * 0.28, H * 0.34, gearMat, H * 0.44, -H * 0.04, 0);
-  detail(head, H * 0.12, H * 0.28, H * 0.34, gearMat, -H * 0.44, -H * 0.04, 0);
-  detail(head, H * 0.54, H * 0.22, H * 0.16, gearMat, 0, -H * 0.3, -H * 0.42);
+  // FAST High-Cut ballistic helmet shell
+  detail(head, H * 1.02, H * 0.52, H * 1.02, gearMat, 0, H * 0.25, 0);
+  // Team identifier helmet top crown & rear patch
+  detail(head, H * 0.76, H * 0.12, H * 0.8, bodyMat, 0, H * 0.47, 0);
+  detail(head, H * 0.4, H * 0.18, 0.02, bodyMat, 0, H * 0.15, H * 0.51);
 
-  // Torso: plate carrier over the chest, straps, pouches, shoulders, pack.
-  detail(torso, 0.4, 0.3, 0.06, bodyMat, 0, 0.06, -0.15);
-  detail(torso, 0.05, 0.34, 0.02, gearMat, 0.13, 0.1, -0.175);
-  detail(torso, 0.05, 0.34, 0.02, gearMat, -0.13, 0.1, -0.175);
-  detail(torso, 0.09, 0.08, 0.05, gearMat, 0.1, -0.15, -0.16);
-  detail(torso, 0.09, 0.08, 0.05, gearMat, -0.1, -0.15, -0.16);
-  detail(torso, 0.34, 0.07, 0.24, trimMat, 0, 0.3, 0);
-  detail(torso, 0.13, 0.12, 0.22, bodyMat, 0.235, 0.2, 0);
-  detail(torso, 0.13, 0.12, 0.22, bodyMat, -0.235, 0.2, 0);
-  detail(torso, 0.36, 0.26, 0.05, trimMat, 0, 0.04, 0.145);
-  detail(torso, 0.26, 0.28, 0.12, gearMat, 0, -0.04, 0.2);
-  detail(torso, 0.28, 0.04, 0.13, trimMat, 0, 0.08, 0.205);
+  // Front NVG Mount Shroud + Wilcox Arm
+  detail(head, 0.065, 0.07, 0.03, metalMat, 0, H * 0.28, -(H * 0.52));
+  // Dual-Tube Night Vision Goggles (PVS-31) flipped up above visor
+  detail(head, 0.045, 0.045, 0.075, gearMat, -0.05, H * 0.35, -(H * 0.55), 0.2);
+  detail(head, 0.045, 0.045, 0.075, gearMat, 0.05, H * 0.35, -(H * 0.55), 0.2);
+  detail(head, 0.035, 0.035, 0.008, lensMat, -0.05, H * 0.34, -(H * 0.58), 0.2);
+  detail(head, 0.035, 0.035, 0.008, lensMat, 0.05, H * 0.34, -(H * 0.58), 0.2);
 
-  // Hips: belt, buckle, thigh rig.
-  detail(hips, 0.4, 0.06, 0.26, gearMat, 0, 0.02, 0);
-  detail(hips, 0.07, 0.05, 0.02, bodyMat, 0, 0.02, -0.135);
-  detail(hips, 0.1, 0.13, 0.08, gearMat, -0.19, -0.07, 0.01);
+  // Tactical ARC rails & Comms Headset (ear cups left & right)
+  detail(head, 0.02, 0.05, H * 0.65, gearMat, H * 0.52, H * 0.22, 0);
+  detail(head, 0.02, 0.05, H * 0.65, gearMat, -(H * 0.52), H * 0.22, 0);
+  detail(head, 0.04, 0.14, 0.09, gearMat, H * 0.5, H * 0.02, 0);
+  detail(head, 0.04, 0.14, 0.09, gearMat, -(H * 0.5), H * 0.02, 0);
 
-  // Arms: shoulder cap, elbow pad, wrist band, glove. The cap is team-coloured
-  // because the shoulder is what shows first around a corner.
+  // Helmet battery counterweight & IR strobe on back
+  detail(head, 0.11, 0.07, 0.04, gearMat, 0, H * 0.18, H * 0.52);
+  detail(head, 0.04, 0.03, 0.02, metalMat, 0, H * 0.22, H * 0.54);
+
+  // ── Tactical Plate Carrier & Chest Rig ────────────────────────────────────
+  // Front armor plate carrier
+  detail(torso, 0.41, 0.34, 0.07, bodyMat, 0, 0.06, -0.155);
+  // Triple rifle magazine pouches on chest
+  detail(torso, 0.08, 0.13, 0.055, gearMat, -0.11, -0.06, -0.185);
+  detail(torso, 0.08, 0.13, 0.055, gearMat, 0, -0.06, -0.185);
+  detail(torso, 0.08, 0.13, 0.055, gearMat, 0.11, -0.06, -0.185);
+
+  // MBITR Tactical Radio with Whip Antenna over left shoulder
+  detail(torso, 0.075, 0.16, 0.06, gearMat, -0.18, 0.08, -0.15);
+  detail(torso, 0.015, 0.32, 0.015, metalMat, -0.18, 0.28, -0.14, 0, 0, 0.1);
+
+  // Tourniquet (CAT) & Padded Shoulder Straps
+  detail(torso, 0.12, 0.04, 0.03, metalMat, 0.08, 0.15, -0.165);
+  detail(torso, 0.07, 0.04, 0.24, gearMat, -0.15, 0.28, 0);
+  detail(torso, 0.07, 0.04, 0.24, gearMat, 0.15, 0.28, 0);
+
+  // Rear Assault Backpack & Hydration System
+  detail(torso, 0.34, 0.36, 0.12, gearMat, 0, 0.04, 0.18);
+  detail(torso, 0.28, 0.06, 0.04, bodyMat, 0, 0.18, 0.23); // Team ID pack strap
+
+  // ── Tactical Duty Belt & Holsters ─────────────────────────────────────────
+  detail(hips, 0.42, 0.07, 0.27, gearMat, 0, 0.02, 0);
+  detail(hips, 0.08, 0.06, 0.03, metalMat, 0, 0.02, -0.14); // Metal belt buckle
+
+  // Drop-leg Tactical Kydex Holster with Sidearm Pistol on right thigh
+  detail(hips, 0.09, 0.16, 0.11, gearMat, -0.21, -0.11, 0);
+  detail(hips, 0.04, 0.07, 0.14, metalMat, -0.22, -0.08, 0.01); // Molded pistol slide
+
+  // Tactical IFAK (Medkit) pouch on left hip
+  detail(hips, 0.1, 0.13, 0.09, gearMat, 0.21, -0.08, 0);
+
+  // ── Arms & Operator Combat Gloves ─────────────────────────────────────────
   for (const arm of [armL, armR]) {
-    detail(arm, 0.135, 0.1, 0.135, bodyMat, 0, -0.02, 0);
-    detail(arm, 0.13, 0.09, 0.13, gearMat, 0, -0.26, 0);
-    detail(arm, 0.135, 0.03, 0.135, bodyMat, 0, -0.42, 0);
-    detail(arm, 0.125, 0.11, 0.14, gearMat, 0, -0.49, -0.01);
+    // Shoulder rank/team patch
+    detail(arm, 0.135, 0.11, 0.135, bodyMat, 0, -0.03, 0);
+    // Hard tactical elbow pad
+    detail(arm, 0.138, 0.1, 0.138, gearMat, 0, -0.26, 0);
+    detail(arm, 0.11, 0.07, 0.03, metalMat, 0, -0.26, -0.06);
+    // Combat Operator Glove with carbon knuckle protector
+    detail(arm, 0.13, 0.12, 0.14, gearMat, 0, -0.47, 0);
+    detail(arm, 0.11, 0.03, 0.07, metalMat, 0, -0.45, -0.04);
   }
 
-  // Legs: knee pad, boot, sole.
+  // ── Legs & G3 Knee Armor / Tactical Combat Boots ──────────────────────────
   for (const leg of [legL, legR]) {
-    detail(leg, 0.16, 0.12, 0.045, gearMat, 0, -0.36, -0.085);
-    detail(leg, 0.17, 0.15, 0.21, gearMat, 0, -0.645, -0.025);
-    detail(leg, 0.18, 0.035, 0.22, trimMat, 0, -0.735, -0.025);
+    // Molded Crye G3 hard knee armor pad
+    detail(leg, 0.165, 0.14, 0.06, gearMat, 0, -0.36, -0.085);
+    detail(leg, 0.12, 0.09, 0.02, metalMat, 0, -0.36, -0.115);
+    // Combat Assault Boot with ankle support & deep tread sole
+    detail(leg, 0.168, 0.16, 0.21, gearMat, 0, -0.63, -0.02);
+    detail(leg, 0.178, 0.04, 0.23, trimMat, 0, -0.73, -0.02);
   }
 
-  // Third-person weapon: a bar reads as a bar at fifty metres. A magazine under it
-  // and an optic on top give it enough silhouette to be recognisable as a gun.
-  detail(gun, 0.05, 0.13, 0.055, gearMat, 0, -0.1, 0.05);
-  detail(gun, 0.04, 0.045, 0.085, gearMat, 0, 0.066, 0.015);
+  // ── Third-Person Weapon (Rifle) ───────────────────────────────────────────
+  // Optic sight on top with lens
+  detail(gun, 0.045, 0.05, 0.09, gearMat, 0, 0.065, 0.02);
+  detail(gun, 0.035, 0.035, 0.01, lensMat, 0, 0.065, 0.065);
+  // PMAG Magazine under receiver
+  detail(gun, 0.048, 0.14, 0.065, gearMat, 0, -0.1, 0.04, -0.15);
+  // Multi-port compensator at muzzle
+  detail(gun, 0.05, 0.05, 0.04, metalMat, 0, 0, -0.23);
 
   const group = new THREE.Group();
   group.add(head, torso, hips, armL, armR, legL, legR, gun);
-  // The visor is the one part that belongs to another part: it sits on the face, so
-  // it is parented to the head rather than posed alongside it. Both pose functions
-  // used to place it themselves, which worked only because the head never yawed —
-  // the staging room's characters glance around, and a sibling visor would have slid
-  // off the side of the face the moment one did.
+
   head.add(visor);
-  visor.position.set(0, HEAD_BOX * 0.06, -(HEAD_BOX * 0.5 + 0.012));
+  visor.position.set(0, HEAD_BOX * 0.04, -(HEAD_BOX * 0.5 + 0.012));
 
   return {
     group,
@@ -321,7 +365,10 @@ export function buildCharacter(shadows: boolean): CharacterRig {
       ownedGeo.length = 0;
       bodyMat.dispose();
       trimMat.dispose();
+      camoMat.dispose();
       gearMat.dispose();
+      lensMat.dispose();
+      metalMat.dispose();
     },
   };
 }

@@ -355,16 +355,26 @@ export class World {
       const spec = MATERIALS[key];
       const geo = mergeBrushes(list, spec.color);
       const transparent = spec.opacity !== undefined && spec.opacity < 1;
-      const mat = new THREE.MeshLambertMaterial({
-        vertexColors: true,
-        transparent,
-        opacity: spec.opacity ?? 1,
-        // Lambert ignores roughness/metalness, which is exactly what we want:
-        // the level is matte, and the cost of a physical material across 450
-        // brushes buys nothing visible on flat untextured faces.
-        side: transparent ? THREE.DoubleSide : THREE.FrontSide,
-        depthWrite: !transparent,
-      });
+      let mat: THREE.Material;
+      if (key === 'metal' || key === 'metalDark' || key === 'accent') {
+        mat = new THREE.MeshPhongMaterial({
+          vertexColors: true,
+          specular: key === 'metal' ? 0x707c8c : 0x424a54,
+          shininess: key === 'metal' ? 60 : 42,
+          transparent,
+          opacity: spec.opacity ?? 1,
+          side: transparent ? THREE.DoubleSide : THREE.FrontSide,
+          depthWrite: !transparent,
+        });
+      } else {
+        mat = new THREE.MeshLambertMaterial({
+          vertexColors: true,
+          transparent,
+          opacity: spec.opacity ?? 1,
+          side: transparent ? THREE.DoubleSide : THREE.FrontSide,
+          depthWrite: !transparent,
+        });
+      }
       const mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = shadows > 0 && !transparent;
       mesh.receiveShadow = shadows > 0;

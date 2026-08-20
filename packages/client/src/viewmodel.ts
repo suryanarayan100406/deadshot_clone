@@ -981,7 +981,8 @@ export class ViewModel {
     this.flash.rotation.z = Math.random() * Math.PI;
     const s = this.flashScale * (0.8 + Math.random() * 0.55);
     this.flash.scale.set(s, s, s);
-    this.flashLight.intensity = 3.2 * this.flashScale;
+    this.flashLight.color.setHex(0xffaa55);
+    this.flashLight.intensity = 4.8 * this.flashScale;
 
     if (this.ejects) {
       // Read the gun's live transform rather than last frame's: `fire` runs from

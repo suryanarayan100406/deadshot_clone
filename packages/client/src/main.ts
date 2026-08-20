@@ -241,6 +241,8 @@ class Game {
     // Two passes share one frame, so clearing is done by hand between them.
     this.renderer.autoClear = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
