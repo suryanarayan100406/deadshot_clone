@@ -272,6 +272,69 @@ export function getCarbonTexture(): THREE.Texture {
   return tex;
 }
 
+/** Generates brushed gunmetal receiver texture */
+export function getGunMetalTexture(): THREE.Texture {
+  const hit = textureCache.get('tactical_gunmetal');
+  if (hit) return hit;
+
+  const size = 256;
+  const { canvas, ctx } = createBaseCanvas(size);
+
+  ctx.fillStyle = '#8a9098';
+  ctx.fillRect(0, 0, size, size);
+
+  // Fine brushed horizontal grain
+  ctx.strokeStyle = '#b0b8c4';
+  ctx.lineWidth = 1;
+  for (let y = 0; y < size; y += 2) {
+    const alpha = (Math.sin(y * 14.3) * 0.5 + 0.5) * 0.45;
+    ctx.strokeStyle = `rgba(230, 240, 255, ${alpha.toFixed(2)})`;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(size, y);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  textureCache.set('tactical_gunmetal', tex);
+  return tex;
+}
+
+/** Generates tactical Damascus steel wave pattern */
+export function getDamascusTexture(): THREE.Texture {
+  const hit = textureCache.get('tactical_damascus');
+  if (hit) return hit;
+
+  const size = 256;
+  const { canvas, ctx } = createBaseCanvas(size);
+
+  ctx.fillStyle = '#4a5058';
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.lineWidth = 2.5;
+  for (let i = 0; i < 30; i++) {
+    const y = i * 9;
+    ctx.strokeStyle = i % 2 === 0 ? '#9aa4b2' : '#2b3036';
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    for (let x = 0; x <= size; x += 16) {
+      const dy = Math.sin(x * 0.06 + i * 0.4) * 8 + Math.cos(x * 0.03) * 4;
+      ctx.lineTo(x, y + dy);
+    }
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  textureCache.set('tactical_damascus', tex);
+  return tex;
+}
+
 /** Returns cached high-res seamless tiling texture for a given material key */
 export function getTextureForMaterial(key: MatKey): THREE.Texture {
   const hit = textureCache.get(key);

@@ -25,7 +25,7 @@
 
 import * as THREE from 'three';
 import { MELEE_SWING, clamp, cycleTime, weaponById, type WeaponDef } from '@oneshot/shared';
-import { getCarbonTexture } from './textures';
+import { getCarbonTexture, getGunMetalTexture, getDamascusTexture } from './textures';
 
 /** Resting offset from the eye: right, down, forward. */
 const HIP_POS = new THREE.Vector3(0.19, -0.17, -0.34);
@@ -485,16 +485,19 @@ export class ViewModel {
 
     // Realistic tactical materials with authentic specular response
     const bodyMat = new THREE.MeshPhongMaterial({
+      map: getGunMetalTexture(),
       color: v.color,
-      specular: 0x4e5560,
-      shininess: 45,
+      specular: 0x8898a8,
+      shininess: 75,
     });
     const accentMat = new THREE.MeshPhongMaterial({
+      map: getGunMetalTexture(),
       color: v.accent,
-      specular: 0x788290,
-      shininess: 65,
+      specular: 0x9cb0c4,
+      shininess: 90,
     });
     const darkMat = new THREE.MeshPhongMaterial({
+      map: getCarbonTexture(),
       color: 0x121418,
       specular: 0x555e6c,
       shininess: 85,
@@ -511,9 +514,10 @@ export class ViewModel {
       shininess: 110,
     });
     const chromeMat = new THREE.MeshPhongMaterial({
-      color: 0x98a0aa,
-      specular: 0xf0f4f8,
-      shininess: 120,
+      map: getDamascusTexture(),
+      color: 0xc8d0d8,
+      specular: 0xffffff,
+      shininess: 140,
     });
     const opticLensMat = new THREE.MeshPhongMaterial({
       color: 0x18302c,
@@ -1114,22 +1118,59 @@ export class ViewModel {
     // Airborne tilt: the gun drops a touch while falling.
     const airTilt = onGround ? 0 : 0.05;
 
-    // Reload: lower, roll away, come back. A single curve drives all of it.
+    // ── Multi-Stage Tactical Reload Animation ─────────────────────────────
     let reloadDrop = 0;
     let reloadRoll = 0;
     let reloadYaw = 0;
+    let reloadPitch = 0;
     /** How far through the reload, `0 → 1`, or −1 when none is running. */
     let reloadP = -1;
     if (this.reloadT > 0) {
       this.reloadT = Math.max(0, this.reloadT - dt);
       const p = 1 - this.reloadT / this.reloadDur;
       reloadP = p;
-      // Fast down, hold, fast up.
-      const curve = p < 0.22 ? p / 0.22 : p > 0.78 ? (1 - p) / 0.22 : 1;
-      const e = curve * curve * (3 - 2 * curve);
-      reloadDrop = e * 0.14;
-      reloadRoll = e * 0.55;
-      reloadYaw = e * 0.2;
+
+      if (p < 0.22) {
+        // Stage 1: Tilt weapon into tactical workspace & eject mag
+        const t = p / 0.22;
+        const e = t * t * (3 - 2 * t);
+        reloadDrop = e * 0.08;
+        reloadRoll = e * 0.46;
+        reloadYaw = -e * 0.28;
+        reloadPitch = -e * 0.16;
+      } else if (p < 0.65) {
+        // Stage 2: Guide fresh magazine up to magwell
+        const t = (p - 0.22) / 0.43;
+        const breathe = Math.sin(t * Math.PI) * 0.015;
+        reloadDrop = 0.08 + breathe;
+        reloadRoll = 0.46 - t * 0.08;
+        reloadYaw = -0.28 + t * 0.06;
+        reloadPitch = -0.16 + t * 0.04;
+      } else if (p < 0.78) {
+        // Stage 3: Tactical Palm Slap Lock (Sharp upward jolt!)
+        const t = (p - 0.65) / 0.13;
+        const slap = Math.sin(t * Math.PI);
+        reloadDrop = 0.08 - slap * 0.035;
+        reloadRoll = 0.38 - slap * 0.18;
+        reloadYaw = -0.22 - slap * 0.06;
+        reloadPitch = -0.12 + slap * 0.08;
+      } else if (p < 0.90) {
+        // Stage 4: Bolt release / Charging handle rack
+        const t = (p - 0.78) / 0.12;
+        const boltRack = Math.sin(t * Math.PI);
+        reloadDrop = 0.08 * (1 - t);
+        reloadRoll = 0.38 * (1 - t);
+        reloadYaw = -0.22 * (1 - t) - boltRack * 0.08;
+        reloadPitch = -0.12 * (1 - t);
+      } else {
+        // Stage 5: Settle smoothly back into high-ready aim
+        const t = (p - 0.90) / 0.10;
+        const k = (1 - t) * (1 - t);
+        reloadDrop = 0.02 * k;
+        reloadRoll = 0.05 * k;
+        reloadYaw = -0.04 * k;
+        reloadPitch = -0.02 * k;
+      }
     }
 
     // Switch: raise from below.
@@ -1147,12 +1188,7 @@ export class ViewModel {
        Everything above this moves the whole weapon, which is the hands holding
        it. What follows moves parts of it against each other, which is the gun
        working — and that is the difference between a model that recoils and a
-       model that cycles. Neither substitutes for the other: a rifle that jumps
-       on every shot but whose bolt never moves reads as a prop being shaken.
-
-       Two nodes carry all of it, and both are written every frame even when
-       nothing is animating, so a cancelled reload or a weapon swap can never
-       leave a part stranded halfway out of the receiver.
+       model that cycles.
        ─────────────────────────────────────────────────────────────────────── */
     let actionZ = 0;
     let actionLift = 0;
@@ -1165,9 +1201,6 @@ export class ViewModel {
       this.actionT = Math.max(0, this.actionT - dt);
       const p = 1 - this.actionT / this.actionDur;
       actionZ = this.strokeShape(p) * this.actionTravel;
-      // A bolt handle lifts before it draws and drops after it closes, so the
-      // rotation leads and trails the travel instead of tracking it — hence the
-      // 1.6× on the phase, which finishes the lift-and-drop arc early.
       if (this.actionKind === 'bolt') {
         actionLift = Math.sin(Math.min(1, p * 1.6) * Math.PI) * 0.85;
       }
@@ -1176,51 +1209,49 @@ export class ViewModel {
     if (reloadP >= 0) {
       const p = reloadP;
       if (this.hasMag) {
-        // Drop, swap, insert, seat. The empty magazine is gone before the hand
-        // does anything else, and the last beat is a tap on the base of the
-        // fresh one — which is the moment a player reads as "loaded", well
-        // before the timer they cannot see actually expires.
-        if (p < 0.16) {
-          const t = p / 0.16;
-          // Squared, not linear: it is falling out under gravity, not being
-          // lowered on a string.
-          magY = -0.34 * t * t;
-          magZ = 0.05 * t * t;
-          magRoll = 0.9 * t * t;
-        } else if (p < 0.44) {
-          // Off-screen entirely while the other hand fetches a fresh one.
-          // Cheaper and more honest than animating a magazine that does not
-          // exist yet through the floor of the frame.
+        if (p < 0.20) {
+          // Empty magazine drops out under gravity with acceleration
+          const t = p / 0.20;
+          magY = -0.45 * t * t;
+          magZ = 0.08 * t * t;
+          magRoll = 0.85 * t * t;
+        } else if (p < 0.38) {
+          // Offscreen while hand grabs fresh magazine
           magVisible = false;
-        } else if (p < 0.74) {
-          const t = (p - 0.44) / 0.3;
+        } else if (p < 0.65) {
+          // Fresh magazine inserts smoothly into magwell
+          const t = (p - 0.38) / 0.27;
           const e = t * t * (3 - 2 * t);
-          magY = -0.34 * (1 - e);
-          magZ = 0.05 * (1 - e);
-          magRoll = 0.9 * (1 - e);
-        } else if (p < 0.86) {
-          // Seat tap: one damped bounce against the magazine well.
-          const t = (p - 0.74) / 0.12;
-          magY = -Math.sin(t * Math.PI * 2) * 0.012 * (1 - t);
+          magY = -0.45 * (1 - e);
+          magZ = 0.08 * (1 - e);
+          magRoll = 0.85 * (1 - e);
+        } else if (p < 0.78) {
+          // Seated firmly with subtle palm compression
+          const t = (p - 0.65) / 0.13;
+          magY = -Math.sin(t * Math.PI) * 0.008;
+          magZ = 0;
+          magRoll = 0;
+        } else {
+          magY = 0;
+          magZ = 0;
+          magRoll = 0;
         }
-        // A bolt gun still has to chamber a round out of the fresh magazine, so
-        // the tail of its reload is a full stroke of the action rather than
-        // nothing at all. `max` against the per-shot values so a reload begun
-        // while the bolt is still travelling cannot rewind it.
-        if (this.actionKind === 'bolt' && p >= 0.84) {
-          const t = Math.min(1, (p - 0.84) / 0.16);
-          actionZ = Math.max(actionZ, this.strokeShape(t) * this.actionTravel);
-          actionLift = Math.max(actionLift, Math.sin(Math.min(1, t * 1.6) * Math.PI) * 0.85);
+
+        // Bolt carrier group rack on reload
+        if (p >= 0.78 && p < 0.90) {
+          const t = (p - 0.78) / 0.12;
+          const stroke = Math.sin(t * Math.PI);
+          actionZ = Math.max(actionZ, stroke * this.actionTravel * 1.6);
+          if (this.actionKind === 'bolt') {
+            actionLift = Math.max(actionLift, stroke * 0.88);
+          }
         }
       } else if (this.tubeShells > 0) {
-        // Tube fed: shells through the loading gate one at a time, then a pump
-        // stroke to chamber. There is no gate mesh to animate, so what sells it
-        // is the forend rocking once per shell — the count, and therefore the
-        // tempo, comes straight off the magazine size.
-        const feedEnd = 0.78;
+        // Shotgun individual shell feeds
+        const feedEnd = 0.76;
         if (p < feedEnd) {
           const shell = (p / feedEnd) * this.tubeShells;
-          actionZ = Math.abs(Math.sin(shell * Math.PI)) * this.actionTravel * 0.16;
+          actionZ = Math.abs(Math.sin(shell * Math.PI)) * this.actionTravel * 0.22;
         } else {
           const t = Math.min(1, (p - feedEnd) / (1 - feedEnd));
           actionZ = Math.max(actionZ, this.strokeShape(t) * this.actionTravel);
@@ -1286,7 +1317,7 @@ export class ViewModel {
       pz + this.kickZ * 0.012 * (1 - a * 0.45),
     );
     this.root.rotation.set(
-      this.kickPitch * 0.5 + airTilt + reloadDrop * 1.5,
+      this.kickPitch * 0.5 + airTilt + reloadPitch,
       this.swayX * 1.8 + reloadYaw + this.kickYaw * 0.4,
       this.kickRoll + reloadRoll + switchRoll + this.swayX * 2.2,
     );
