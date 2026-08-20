@@ -1106,33 +1106,32 @@ function buildDustworks(): GameMap {
   lamp(p, WX, fl1H - 0.05, WZ - 6, 0.15);
   lamp(p, WX, fl1H - 0.05, WZ + 6, 0.15);
 
-  // Interior staircase to 2nd Floor (lands at z = -4.6, y = 3.6m)
-  stairs(b, WX - 5, 0, WZ - 10, 'z+', 12, 0.30, 0.45, 2.4, 'concreteDark');
+  // Interior staircase to 2nd Floor (14 steps of 0.286m rise, lands at z = -4.12, exact y = 4.0m)
+  stairs(b, WX - 5, 0, -10.0, 'z+', 14, fl2Y / 14, 0.42, 2.4, 'concreteDark');
 
-  // 2nd Floor Slab with built-in stairwell void so players walk freely between floors
+  // 2nd Floor Slab with stairwell void allowing seamless walk-through
   br(b, -19.5, fl1H, 0, 11.0, 0.4, 28.0, 'concreteDark'); // East section
   br(b, -29.5, fl1H, -12.5, 9.0, 0.4, 3.0, 'concreteDark'); // West south section
   br(b, -29.5, fl1H, 5.0, 9.0, 0.4, 18.0, 'concreteDark'); // West north section
-  guard(b, p, 'z', -25.0, -11.0, -4.0, fl2Y, 'metal'); // Stairwell guardrail
-  guard(b, p, 'x', -4.0, -34.0, -25.0, fl2Y, 'metal');
+  guard(b, p, 'z', -25.0, -11.0, -4.0, fl2Y, 'metal'); // Stairwell guardrail along side only
 
   // ── 2nd Floor Exterior Catwalk Terrace & Upper Skybridge ─────────────────
   // Continuous 4.0m-wide elevated walkway running full length from z = -14 to z = 23
   br(b, -12.0, fl1H, 4.5, 4.0, 0.4, 37.0, 'concreteDark');
-  // Catwalk guardrail with clear opening for the Grand Central Staircase landing
-  guard(b, p, 'z', -10.0, -14, -2.6, fl2Y, 'metal');
-  guard(b, p, 'z', -10.0, 2.6, 23, fl2Y, 'metal');
+  // Catwalk guardrails with wide landing opening for the Grand Central Staircase
+  guard(b, p, 'z', -10.0, -14, -2.8, fl2Y, 'metal');
+  guard(b, p, 'z', -10.0, 2.8, 23, fl2Y, 'metal');
   guard(b, p, 'x', -14.0, -14, -10, fl2Y, 'metal');
 
   // Transition stairs connecting bridge end (z = 23, y = 4.0m) down to Helipad Terrace (y = 3.2m)
-  stairs(b, -12.0, HY, 23.0, 'z+', 3, (fl2Y - HY) / 3, 0.5, 4.0, 'concreteDark');
+  stairs(b, -12.0, HY, 24.5, 'z-', 3, (fl2Y - HY) / 3, 0.5, 4.0, 'concreteDark');
   br(b, -9.8, HY, 24.0, 0.4, 0.9, 2.0, 'concreteDark');
   br(b, -14.2, HY, 24.0, 0.4, 0.9, 2.0, 'concreteDark');
 
   // ── Grand Central Staircase from Courtyard to 2nd Floor Catwalk ──────────
-  stairs(b, -4.6, 0, WZ, 'x-', 12, 0.30, 0.45, 5.0, 'concreteDark');
-  br(b, -7.3, 0, WZ - 2.7, 5.4, 2.4, 0.4, 'concreteDark');
-  br(b, -7.3, 0, WZ + 2.7, 5.4, 2.4, 0.4, 'concreteDark');
+  stairs(b, -4.12, 0, WZ, 'x-', 14, fl2Y / 14, 0.42, 5.0, 'concreteDark');
+  br(b, -7.06, 0, WZ - 2.7, 5.88, 2.4, 0.4, 'concreteDark');
+  br(b, -7.06, 0, WZ + 2.7, 5.88, 2.4, 0.4, 'concreteDark');
 
   // 2nd Floor exterior walls & windows
   const winCatDoor: Door = { at: WZ, width: 2.8, height: 2.5 };
@@ -1141,17 +1140,17 @@ function buildDustworks(): GameMap {
   wallWithOpenings(b, 'x', WZ - WD / 2, WX - WW / 2, WX + WW / 2, fl2Y, fl2H, 0.5, 'concrete', undefined, winFront);
   wallWithOpenings(b, 'x', WZ + WD / 2, WX - WW / 2, WX + WW / 2, fl2Y, fl2H, 0.5, 'concrete', undefined, winFront);
 
-  // 2nd Floor Staircase to Roof (starts at z = 10, goes z- to z = 4.6, lands at y = 7.6m)
-  stairs(b, WX + 5, fl2Y, WZ + 10, 'z-', 12, 0.30, 0.45, 2.4, 'concreteDark');
+  // 2nd Floor Staircase to Roof (14 steps of 0.286m rise, lands at z = 4.12, exact y = 8.0m)
+  stairs(b, WX + 5, fl2Y, 10.0, 'z-', 14, (roofWalkY - fl2Y) / 14, 0.42, 2.4, 'concreteDark');
 
   // Roof Slab with stairwell roof opening
   br(b, -28.5, roofY, 0, 11.0, 0.4, 28.0, 'concreteDark'); // West roof section
   br(b, -18.5, roofY, -5.0, 9.0, 0.4, 18.0, 'concreteDark'); // East south roof section
   br(b, -18.5, roofY, 12.5, 9.0, 0.4, 3.0, 'concreteDark'); // East north roof section
 
-  // Roof stairwell penthouse enclosure with access doorway
+  // Roof stairwell penthouse enclosure with wide access doorway
   wall(b, 'z', -23.0, 4.0, 11.0, roofWalkY, 2.6, 0.4, 'concrete');
-  wall(b, 'x', 4.0, -23.0, -14.0, roofWalkY, 2.6, 0.4, 'concrete', { at: -18.5, width: 2.4, height: 2.4 });
+  wall(b, 'x', 4.0, -23.0, -14.0, roofWalkY, 2.6, 0.4, 'concrete', { at: -18.5, width: 2.6, height: 2.5 });
   wall(b, 'x', 11.0, -23.0, -14.0, roofWalkY, 2.6, 0.4, 'concrete');
   br(b, -18.5, roofWalkY + 2.6, 7.5, 9.0, 0.3, 7.5, 'metalDark');
 
@@ -1170,7 +1169,7 @@ function buildDustworks(): GameMap {
   // ── West Operations North Connecting Annex (Closing Gap to Terrace) ────────
   wall(b, 'z', -28, 14, 23, 0, fl1H, 0.5, 'concrete');
   br(b, -21, fl1H, 18.5, 14.0, 0.4, 9.0, 'concreteDark');
-  stairs(b, -21, HY, 23.0, 'z+', 3, (fl2Y - HY) / 3, 0.5, 10.0, 'concreteDark');
+  stairs(b, -21, HY, 24.5, 'z-', 3, (fl2Y - HY) / 3, 0.5, 10.0, 'concreteDark');
   wall(b, 'z', -28, 14, 23, fl2Y, fl2H, 0.5, 'concrete');
   br(b, -21, roofY, 18.5, 14.5, 0.4, 9.5, 'concreteDark');
   guard(b, p, 'z', -28.25, 14, 23, roofWalkY, 'metal');
@@ -1198,7 +1197,7 @@ function buildDustworks(): GameMap {
   br(b, EX + EW / 2 - 2.0, 3.2, 4.5, 4.0, 0.4, 15.0, 'concreteDark');
   guard(b, p, 'z', EX + EW / 2 - 4.0, -3.0, 12.0, 3.6, 'metal');
   guard(b, p, 'x', 12.0, EX + EW / 2 - 4.0, EX + EW / 2, 3.6, 'metal');
-  stairs(b, EX + EW / 2 - 2.0, 0, EZ - 8, 'z+', 11, 0.29, 0.45, 2.0, 'concreteDark');
+  stairs(b, EX + EW / 2 - 2.0, 0, -8.04, 'z+', 12, 3.6 / 12, 0.42, 2.0, 'concreteDark');
 
   // Hangar interior crates & barrels
   br(b, EX - 2, 0, EZ - 6, 2.4, 1.2, 3.6, 'wood');
@@ -1214,6 +1213,7 @@ function buildDustworks(): GameMap {
   br(b, 24, 4.0, 18, 12.5, 0.35, 10.5, 'metalDark');
   guard(b, p, 'z', 18, 13, 23, 4.35, 'metal');
   guard(b, p, 'z', 30, 13, 23, 4.35, 'metal');
+  stairs(b, 24, HY, 24.5, 'z-', 4, (4.35 - HY) / 4, 0.45, 6.0, 'concreteDark');
 
   // ── 3. Blue Shipping Containers Depot ─────────────────────────────────────
   shippingContainer(b, p, 11, 0, -10, 'z', 'accent');
@@ -1247,9 +1247,9 @@ function buildDustworks(): GameMap {
   // ── 5. Upper Back Heliport & Solar Generator Terrace (North) ──────────────
   br(b, 0, 0, HZ, HW, HY, HD, 'concrete');
 
-  // Access stairs on left and right
-  stairs(b, -16, 0, HZ - HD / 2, 'z-', 11, HY / 11, 0.45, 4.0, 'concreteDark');
-  stairs(b, 16, 0, HZ - HD / 2, 'z-', 11, HY / 11, 0.45, 4.0, 'concreteDark');
+  // Access stairs on left and right climbing from courtyard up to terrace
+  stairs(b, -16, 0, 18.05, 'z+', 11, HY / 11, 0.45, 4.0, 'concreteDark');
+  stairs(b, 16, 0, 18.05, 'z+', 11, HY / 11, 0.45, 4.0, 'concreteDark');
 
   // Helipad tarmac & painted "H" markings
   br(b, 0, HY, HZ, 16.0, 0.02, 16.0, 'concreteDark');
@@ -1291,10 +1291,15 @@ function buildDustworks(): GameMap {
     br(b, tx, 0, tz, 6.0, 3.4, 6.0, 'concreteDark');
     wall(b, 'x', tz - 2.8, tx - 2.8, tx + 2.8, 3.4, 0.9, 0.4, 'concrete');
     wall(b, 'x', tz + 2.8, tx - 2.8, tx + 2.8, 3.4, 0.9, 0.4, 'concrete');
-    wall(b, 'z', tx - 2.8, tz - 2.8, tz + 2.8, 3.4, 0.9, 0.4, 'concrete');
-    wall(b, 'z', tx + 2.8, tz - 2.8, tz + 2.8, 3.4, 0.9, 0.4, 'concrete');
+    // Outer wall solid, inner wall with access doorway from stairs
+    wall(b, 'z', tx + (tx > 0 ? 2.8 : -2.8), tz - 2.8, tz + 2.8, 3.4, 0.9, 0.4, 'concrete');
+    wall(b, 'z', tx + (tx > 0 ? -2.8 : 2.8), tz - 2.8, tz + 2.8, 3.4, 0.9, 0.4, 'concrete', { at: tz, width: 1.8, height: 0.9 });
     // Access stairs into watchtowers
-    stairs(b, tx + (tx > 0 ? -4.5 : 4.5), 0, tz, tx > 0 ? 'x+' : 'x-', 11, 3.4 / 11, 0.4, 1.8, 'concreteDark');
+    if (tx > 0) {
+      stairs(b, 30.6, 0, tz, 'x+', 11, 3.4 / 11, 0.40, 1.8, 'concreteDark');
+    } else {
+      stairs(b, -30.6, 0, tz, 'x-', 11, 3.4 / 11, 0.40, 1.8, 'concreteDark');
+    }
     pr(p, 'cyl', tx, 3.4, tz, 0.12, 2.7, 'metalDark', 'y', true);
     pr(p, 'sphere', tx, 6.1, tz, 0.22, 0, 'light');
   }
