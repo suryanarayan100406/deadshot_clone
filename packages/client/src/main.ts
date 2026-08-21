@@ -328,6 +328,10 @@ class Game {
     this.bindChat();
     this.bindWindow();
 
+    const unlockAudio = () => this.audio.unlock();
+    window.addEventListener('pointerdown', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
+
     this.settings.onChange((next) => this.applySettings(next));
 
     // One map in M1, preloaded so pressing Play never waits on geometry.

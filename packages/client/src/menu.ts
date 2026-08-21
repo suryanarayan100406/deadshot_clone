@@ -158,6 +158,7 @@ export class Menu {
    * reason of its own to be off and the two have to compose.
    */
   private playEnabled = true;
+  private autoJoinCode = '';
   /** Rebinding functions for every control on the open settings tab. */
   private syncers: Array<(s: Settings) => void> = [];
 
@@ -201,6 +202,11 @@ export class Menu {
     settings.onChange((s) => {
       for (const fn of this.syncers) fn(s);
     });
+
+    // If the player arrived via an invite link, take them directly into the lobby immediately
+    if (this.autoJoinCode) {
+      this.submit('join');
+    }
   }
 
   /* ── Visibility ───────────────────────────────────────────────────────── */
@@ -400,24 +406,24 @@ export class Menu {
   }
 
   /**
-   * Honour a `?party=CODE` link.
+   * Honour a `?party=CODE` or `?room=CODE` link.
    *
-   * Prefill, never auto-join: the link arrived from a friend, but the name and
-   * the weapon are still the player's to choose, and joining out from under them
-   * would take that away. The code lands in the box and Join lights up; pressing
-   * it is theirs. The query is dropped from the address bar afterwards so a later
+   * Takes the player straight into the lobby staging room automatically.
+   * The query is dropped from the address bar afterwards so a later
    * refresh does not quietly put somebody's party code back in front of them.
    */
   private prefillFromLink(): void {
     let code: string;
     try {
-      code = sanitizePartyCode(new URLSearchParams(location.search).get('party') ?? '');
+      const params = new URLSearchParams(location.search);
+      code = sanitizePartyCode(params.get('party') ?? params.get('room') ?? '');
     } catch {
       return;
     }
     if (!code) return;
     this.roomInput.value = code;
     this.settings.set('room', code);
+    this.autoJoinCode = code;
     try {
       history.replaceState(null, '', location.pathname);
     } catch {
