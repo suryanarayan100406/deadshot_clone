@@ -130,24 +130,20 @@ function poseIdle(rig: CharacterRig, weapon: number, t: number, ready: boolean, 
 
   const shoulderY = JOINT.shoulderY + breathe * 0.5;
   // Waiting puts the weight on one leg and turns the other foot out; ready squares up.
-  rig.legL.position.set(JOINT.legX + shift * 0.15, JOINT.legHipY, 0);
-  rig.legR.position.set(-JOINT.legX + shift * 0.15, JOINT.legHipY, 0);
-  rig.legL.rotation.set(ready ? 0 : 0.04, ready ? 0 : 0.12, ready ? -0.02 : -0.08);
-  rig.legR.rotation.set(0, 0, ready ? 0.02 : 0.04);
+  rig.legL.position.set(-JOINT.legX + shift * 0.2, JOINT.legHipY, 0);
+  rig.legR.position.set(JOINT.legX + shift * 0.2, JOINT.legHipY, 0);
+  rig.legL.rotation.set(ready ? 0 : -0.06, ready ? 0 : -0.14, ready ? 0.02 : 0.11);
+  rig.legR.rotation.set(0, 0, ready ? -0.02 : -0.05);
 
-  if (ready) {
-    rig.armR.position.set(-JOINT.armX, shoulderY, 0);
-    rig.armR.rotation.set(1.22 + breathe * 1.8, -0.22, -0.12);
-    rig.armL.position.set(JOINT.armX, shoulderY, 0);
-    rig.armL.rotation.set(1.30 + breathe * 2.0, 0.42, 0.32);
-    poseWeapon(rig, weapon, 0.02 + Math.sin(t * 1.6 + 0.4) * 0.015, 1);
-  } else {
-    rig.armR.position.set(-JOINT.armX, shoulderY, 0);
-    rig.armR.rotation.set(0.94 + breathe * 1.5, -0.18, -0.10);
-    rig.armL.position.set(JOINT.armX, shoulderY, 0);
-    rig.armL.rotation.set(1.08 + breathe * 1.8, 0.36, 0.26);
-    poseWeapon(rig, weapon, -0.24 + Math.sin(t * 1.6 + 0.4) * 0.02, 1);
-  }
+  // Bigger angle is a hand held higher — see the sign note in `actors.ts`.
+  rig.armR.position.set(-JOINT.armX, shoulderY, 0);
+  rig.armR.rotation.set((ready ? 1.3 : 1.0) + breathe * 2.2, 0, 0.05);
+  rig.armL.position.set(JOINT.armX, shoulderY, 0);
+  rig.armL.rotation.set(ready ? 0.95 : 0.3 + breathe * 3, 0, -0.06);
+
+  // Muzzle up and level once ready, angled at the floor while waiting. Trigger
+  // discipline, and it makes a room of unready players read as unready from behind.
+  poseWeapon(rig, weapon, (ready ? 0.03 : -0.3) + Math.sin(t * 1.6 + 0.4) * 0.02, 1);
 }
 
 export class LobbyStage {
