@@ -23,8 +23,6 @@
  */
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import {
   AF,
   EYE_HEIGHT,
@@ -40,20 +38,6 @@ import {
   type ActorState,
 } from '@oneshot/shared';
 import { getCamoTexture, getCarbonTexture } from './textures';
-
-interface LoadedSoldierAsset {
-  scene: THREE.Group;
-  animations: THREE.AnimationClip[];
-}
-
-let soldierAsset: LoadedSoldierAsset | null = null;
-const gltfLoader = new GLTFLoader();
-gltfLoader.load('/models/Soldier.glb', (gltf) => {
-  soldierAsset = {
-    scene: gltf.scene as THREE.Group,
-    animations: gltf.animations,
-  };
-});
 
 /** Snapshot history kept per actor. 20 frames ≈ 1 s, well past the interp delay. */
 const HISTORY = 24;
@@ -174,16 +158,6 @@ export interface CharacterRig {
   bodyMat: THREE.MeshLambertMaterial;
   trimMat: THREE.MeshLambertMaterial;
   gearMat: THREE.MeshPhongMaterial;
-  soldierRoot?: THREE.Group;
-  mixer?: THREE.AnimationMixer;
-  actions?: {
-    idle: THREE.AnimationAction;
-    walk: THREE.AnimationAction;
-    run: THREE.AnimationAction;
-  };
-  spineBone?: THREE.Bone;
-  headBone?: THREE.Bone;
-  rightHandBone?: THREE.Bone;
   dispose(): void;
 }
 
@@ -343,9 +317,9 @@ export function buildCharacter(shadows: boolean): CharacterRig {
   for (const arm of [armL, armR]) {
     // Shoulder rank/team patch
     detail(arm, 0.135, 0.11, 0.135, bodyMat, 0, -0.03, 0);
-    // Hard tactical elbow pad on back of arm (+Z)
+    // Hard tactical elbow pad
     detail(arm, 0.138, 0.1, 0.138, gearMat, 0, -0.26, 0);
-    detail(arm, 0.11, 0.07, 0.03, metalMat, 0, -0.26, 0.06);
+    detail(arm, 0.11, 0.07, 0.03, metalMat, 0, -0.26, -0.06);
     // Combat Operator Glove with carbon knuckle protector
     detail(arm, 0.13, 0.12, 0.14, gearMat, 0, -0.47, 0);
     detail(arm, 0.11, 0.03, 0.07, metalMat, 0, -0.45, -0.04);
@@ -376,64 +350,6 @@ export function buildCharacter(shadows: boolean): CharacterRig {
   head.add(visor);
   visor.position.set(0, HEAD_BOX * 0.04, -(HEAD_BOX * 0.5 + 0.012));
 
-  let soldierRoot: THREE.Group | undefined;
-  let mixer: THREE.AnimationMixer | undefined;
-  let actions: { idle: THREE.AnimationAction; walk: THREE.AnimationAction; run: THREE.AnimationAction } | undefined;
-  let spineBone: THREE.Bone | undefined;
-  let headBone: THREE.Bone | undefined;
-  let rightHandBone: THREE.Bone | undefined;
-
-  if (soldierAsset) {
-    soldierRoot = cloneSkeleton(soldierAsset.scene) as THREE.Group;
-    soldierRoot.scale.setScalar(0.96);
-    soldierRoot.rotation.y = 0;
-
-    soldierRoot.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) {
-        const mesh = obj as THREE.SkinnedMesh;
-        mesh.castShadow = shadows;
-        mesh.receiveShadow = false;
-        if (mesh.material) {
-          (mesh.material as THREE.Material).needsUpdate = true;
-        }
-      }
-      if (obj.name === 'mixamorig:Spine1' || obj.name === 'mixamorig:Spine') {
-        spineBone = obj as THREE.Bone;
-      } else if (obj.name === 'mixamorig:Head') {
-        headBone = obj as THREE.Bone;
-      } else if (obj.name === 'mixamorig:RightHand') {
-        rightHandBone = obj as THREE.Bone;
-      }
-    });
-
-    mixer = new THREE.AnimationMixer(soldierRoot);
-    const idleClip = THREE.AnimationClip.findByName(soldierAsset.animations, 'Idle');
-    const walkClip = THREE.AnimationClip.findByName(soldierAsset.animations, 'Walk');
-    const runClip = THREE.AnimationClip.findByName(soldierAsset.animations, 'Run');
-
-    if (idleClip && walkClip && runClip) {
-      const idle = mixer.clipAction(idleClip);
-      const walk = mixer.clipAction(walkClip);
-      const run = mixer.clipAction(runClip);
-      idle.play();
-      walk.play();
-      run.play();
-      idle.weight = 1.0;
-      walk.weight = 0.0;
-      run.weight = 0.0;
-      actions = { idle, walk, run };
-    }
-
-    group.add(soldierRoot);
-    head.visible = false;
-    torso.visible = false;
-    hips.visible = false;
-    armL.visible = false;
-    armR.visible = false;
-    legL.visible = false;
-    legR.visible = false;
-  }
-
   return {
     group,
     head,
@@ -448,12 +364,6 @@ export function buildCharacter(shadows: boolean): CharacterRig {
     bodyMat,
     trimMat,
     gearMat,
-    soldierRoot,
-    mixer,
-    actions,
-    spineBone,
-    headBone,
-    rightHandBone,
     dispose(): void {
       group.parent?.remove(group);
       for (const g of ownedGeo) g.dispose();
@@ -464,7 +374,6 @@ export function buildCharacter(shadows: boolean): CharacterRig {
       gearMat.dispose();
       lensMat.dispose();
       metalMat.dispose();
-      mixer?.stopAllAction();
     },
   };
 }
@@ -832,41 +741,6 @@ class Actor {
     this.armL.scale.set(1, k, 1);
     this.armR.scale.set(1, k, 1);
 
-    // ── Drive Skeletal Animation Mixer on 3D Soldier Model ───────────────
-    if (this.rig.mixer && this.rig.actions) {
-      const isMoving = onGround && speed > 0.4;
-      const isSprinting = isMoving && speed > 5.2;
-
-      if (isSprinting) {
-        this.rig.actions.run.weight = 1.0;
-        this.rig.actions.run.timeScale = Math.max(0.8, speed / 7.2);
-        this.rig.actions.walk.weight = 0.0;
-        this.rig.actions.idle.weight = 0.0;
-      } else if (isMoving) {
-        const w = Math.min(1, speed / 4.8);
-        this.rig.actions.walk.weight = w;
-        this.rig.actions.walk.timeScale = Math.max(0.6, speed / 4.2);
-        this.rig.actions.idle.weight = 1 - w;
-        this.rig.actions.run.weight = 0.0;
-      } else {
-        this.rig.actions.idle.weight = 1.0;
-        this.rig.actions.walk.weight = 0.0;
-        this.rig.actions.run.weight = 0.0;
-      }
-
-      this.rig.mixer.update(dt);
-
-      if (this.rig.spineBone) {
-        this.rig.spineBone.rotation.x = pitch * 0.45;
-      }
-      if (this.rig.headBone) {
-        this.rig.headBone.rotation.x = pitch * 0.35;
-      }
-      if (this.rig.soldierRoot) {
-        this.rig.soldierRoot.scale.set(0.96, 0.96 * k, 0.96);
-      }
-    }
-
     // Gun rides firmly in both hands
     poseWeapon(this.rig, this.weapon, pitch, k);
 
@@ -882,12 +756,6 @@ class Actor {
     const ease = 1 - (1 - t) * (1 - t);
     this.group.position.set(x, y + 0.02, z);
     this.group.rotation.set(0, yaw, 0);
-
-    if (this.rig.mixer && this.rig.actions) {
-      this.rig.actions.idle.weight = 0;
-      this.rig.actions.walk.weight = 0;
-      this.rig.actions.run.weight = 0;
-    }
 
     const fall = ease * (Math.PI * 0.5);
     this.torso.rotation.set(0, 0, 0);
