@@ -17,7 +17,7 @@ function createBaseCanvas(size = 256): { canvas: HTMLCanvasElement; ctx: CanvasR
   return { canvas, ctx };
 }
 
-/** Crisp architectural concrete panel texture */
+/** Crisp architectural concrete texture (seamless aggregate speckle) */
 function generateConcrete(dark: boolean): HTMLCanvasElement {
   const size = 256;
   const { canvas, ctx } = createBaseCanvas(size);
@@ -28,33 +28,17 @@ function generateConcrete(dark: boolean): HTMLCanvasElement {
 
   // Subtle aggregate speckle
   ctx.fillStyle = dark ? '#cccccc' : '#e4e4e0';
-  for (let i = 0; i < 400; i++) {
+  for (let i = 0; i < 600; i++) {
     const x = (Math.sin(i * 99.1) * 0.5 + 0.5) * size;
     const y = (Math.cos(i * 33.7) * 0.5 + 0.5) * size;
     const r = (i % 3) + 1;
     ctx.fillRect(x, y, r, r);
   }
 
-  // Panel borders
-  ctx.strokeStyle = dark ? '#999999' : '#b0b0aa';
-  ctx.lineWidth = 3;
-  ctx.strokeRect(1, 1, size - 2, size - 2);
-
-  // Tie rod holes in the four corners
-  ctx.fillStyle = dark ? '#777777' : '#888884';
-  for (const [cx, cy] of [[24, 24], [size - 24, 24], [24, size - 24], [size - 24, size - 24]]) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
-
   return canvas;
 }
 
-/** Desert sand ripple texture */
+/** Desert sand ripple texture (seamless) */
 function generateSand(dark: boolean): HTMLCanvasElement {
   const size = 256;
   const { canvas, ctx } = createBaseCanvas(size);
@@ -62,28 +46,28 @@ function generateSand(dark: boolean): HTMLCanvasElement {
   ctx.fillStyle = dark ? '#e8e2d4' : '#faf6ee';
   ctx.fillRect(0, 0, size, size);
 
-  // Wind ripple bands
+  // Subtle wind ripples
   ctx.strokeStyle = dark ? '#cec4b0' : '#e6decb';
-  ctx.lineWidth = 4;
+  ctx.lineWidth = 3;
   for (let y = 16; y < size; y += 32) {
     ctx.beginPath();
     ctx.moveTo(0, y);
-    ctx.bezierCurveTo(size * 0.33, y - 8, size * 0.66, y + 8, size, y);
+    ctx.bezierCurveTo(size * 0.33, y - 6, size * 0.66, y + 6, size, y);
     ctx.stroke();
   }
 
   // Fine sand grain
   ctx.fillStyle = dark ? '#c4baa6' : '#e0d8c4';
-  for (let i = 0; i < 300; i++) {
+  for (let i = 0; i < 400; i++) {
     const x = (Math.sin(i * 14.3) * 0.5 + 0.5) * size;
     const y = (Math.cos(i * 71.9) * 0.5 + 0.5) * size;
-    ctx.fillRect(x, y, 2, 1);
+    ctx.fillRect(x, y, 1.5, 1.5);
   }
 
   return canvas;
 }
 
-/** Industrial diamond-tread metal plate */
+/** Industrial diamond-tread metal plate (seamless) */
 function generateMetal(dark: boolean): HTMLCanvasElement {
   const size = 256;
   const { canvas, ctx } = createBaseCanvas(size);
@@ -91,36 +75,23 @@ function generateMetal(dark: boolean): HTMLCanvasElement {
   ctx.fillStyle = dark ? '#d8dce0' : '#f0f3f6';
   ctx.fillRect(0, 0, size, size);
 
-  // Diamond tread bars
+  // Seamless diamond tread bars
   ctx.fillStyle = dark ? '#a8b0b8' : '#c8d0d8';
   const step = 32;
-  for (let y = 8; y < size; y += step) {
-    for (let x = 8; x < size; x += step) {
+  for (let y = 0; y < size; y += step) {
+    for (let x = 0; x < size; x += step) {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(Math.PI / 4);
-      ctx.fillRect(-6, -2, 12, 4);
+      ctx.fillRect(-5, -2, 10, 4);
       ctx.restore();
     }
-  }
-
-  // Plate border seam and rivets
-  ctx.strokeStyle = dark ? '#889098' : '#a8b0b8';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, size - 2, size - 2);
-
-  ctx.fillStyle = '#ffffff';
-  for (let p = 16; p < size; p += 32) {
-    ctx.fillRect(p - 1, 2, 3, 3);
-    ctx.fillRect(p - 1, size - 5, 3, 3);
-    ctx.fillRect(2, p - 1, 3, 3);
-    ctx.fillRect(size - 5, p - 1, 3, 3);
   }
 
   return canvas;
 }
 
-/** Weathered timber wood planks */
+/** Weathered timber wood planks (seamless grain) */
 function generateWood(): HTMLCanvasElement {
   const size = 256;
   const { canvas, ctx } = createBaseCanvas(size);
@@ -128,29 +99,14 @@ function generateWood(): HTMLCanvasElement {
   ctx.fillStyle = '#f6ede0';
   ctx.fillRect(0, 0, size, size);
 
-  // Vertical planks
-  const plankW = 64;
-  for (let x = 0; x < size; x += plankW) {
-    ctx.strokeStyle = '#a68c70';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(x, 0, plankW, size);
-
-    // Wood grain lines
-    ctx.strokeStyle = '#d6c0a4';
-    ctx.lineWidth = 1.5;
-    for (let g = 8; g < plankW; g += 14) {
-      ctx.beginPath();
-      ctx.moveTo(x + g, 0);
-      ctx.bezierCurveTo(x + g + 4, size * 0.4, x + g - 4, size * 0.7, x + g, size);
-      ctx.stroke();
-    }
-
-    // Iron nails at top and bottom
-    ctx.fillStyle = '#685440';
+  // Wood grain lines
+  ctx.strokeStyle = '#d6c0a4';
+  ctx.lineWidth = 1.5;
+  for (let g = 8; g < size; g += 16) {
     ctx.beginPath();
-    ctx.arc(x + plankW * 0.5, 12, 3, 0, Math.PI * 2);
-    ctx.arc(x + plankW * 0.5, size - 12, 3, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(g, 0);
+    ctx.bezierCurveTo(g + 3, size * 0.4, g - 3, size * 0.7, g, size);
+    ctx.stroke();
   }
 
   return canvas;
@@ -194,13 +150,6 @@ function generateAccent(): HTMLCanvasElement {
 
   ctx.fillStyle = '#f0f5fa';
   ctx.fillRect(0, 0, size, size);
-
-  ctx.strokeStyle = '#90b4d4';
-  ctx.lineWidth = 4;
-  ctx.strokeRect(4, 4, size - 8, size - 8);
-
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(size * 0.5 - 20, size * 0.5 - 3, 40, 6);
 
   return canvas;
 }

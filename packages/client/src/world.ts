@@ -116,27 +116,16 @@ function brushBands(sy: number): [number, number] {
 /**
  * Builds one merged, vertex-coloured geometry from a set of brushes.
  *
- * Faces are emitted manually rather than via BoxGeometry so each face can carry
- * its own tint and its own vertical gradient, and so we can skip the underside of
- * anything sitting on the ground — those triangles are never visible and cost
- * fill rate on every frame.
+ * Faces are emitted cleanly with uniform directional lighting and seamless UV mapping,
+ * eliminating artificial joint seams and banding lines across connected architecture.
  */
 function mergeBrushes(brushes: readonly Brush[], baseColor: number): THREE.BufferGeometry {
-  const rows: number[] = [];
-
-  // Exact vertex count first. A vertical face is now 1–3 quads depending on how
-  // much room its height leaves for a contact band and a lip, so the old "6 faces
-  // × 4 verts" bound no longer holds, and guessing high would mean allocating
-  // several times the buffer a map actually needs.
   let total = 0;
   for (const b of brushes) {
-    const [band, lip] = brushBands(b.sy);
-    faceBands(b.y, b.y + b.sy, band, lip, rows);
-    const quads = rows.length - 1;
     for (let f = 0; f < 6; f++) {
       const ny = FACES[f]!.n[1];
       if (ny < 0 && b.y <= 0.001) continue;
-      total += (ny !== 0 ? 1 : quads) * 4;
+      total += 4;
     }
   }
 
@@ -156,13 +145,6 @@ function mergeBrushes(brushes: readonly Brush[], baseColor: number): THREE.Buffe
     const cx = b.x;
     const cy = b.y + hy;
     const cz = b.z;
-    const y0 = b.y;
-    const y1 = b.y + b.sy;
-    const [band, lip] = brushBands(b.sy);
-    faceBands(y0, y1, band, lip, rows);
-
-    // Per-brush tint so two identical crates never look stamped from a mould.
-    const brushTint = 1 + (hash01(Math.round(b.x * 4), Math.round(b.y * 4), Math.round(b.z * 4), 0x9e37) - 0.5) * 0.13;
 
     for (let f = 0; f < 6; f++) {
       const face = FACES[f]!;
@@ -176,83 +158,49 @@ function mergeBrushes(brushes: readonly Brush[], baseColor: number): THREE.Buffe
       const ez = nz * hz;
       const [ux, uy, uz] = face.u;
       const [vx, vy, vz] = face.v;
-      // In-plane extents: whichever half-sizes are not consumed by the normal.
       const su = Math.abs(ux) * hx + Math.abs(uy) * hy + Math.abs(uz) * hz;
       const sv = Math.abs(vx) * hx + Math.abs(vy) * hy + Math.abs(vz) * hz;
 
-      // Directional shade: top faces catch light, undersides fall away, and the
-      // two horizontal axes differ slightly so corners never merge visually.
-      let shade = 1;
-      if (ny > 0) shade = 1.14;
-      else if (ny < 0) shade = 0.6;
-      else if (nx !== 0) shade = 0.88;
+      // Directional lighting: top catches primary sunlight, walls have subtle directional contrast
+      let shade = 1.0;
+      if (ny > 0) shade = 1.05;
+      else if (ny < 0) shade = 0.70;
+      else if (nx !== 0) shade = 0.90;
       else shade = 0.96;
 
-      const faceTint =
-        shade *
-        brushTint *
-        (1 + (hash01(Math.round(cx * 8 + ex * 3), Math.round(cy * 8 + ey * 3), Math.round(cz * 8 + ez * 3), f * 7919) - 0.5) * 0.075);
+      const r = base.r * shade;
+      const g = base.g * shade;
+      const bl = base.b * shade;
 
-      if (ny !== 0) {
-        // Horizontal face: one quad, and no gradient to bake into it.
-        const r = base.r * faceTint;
-        const g = base.g * faceTint;
-        const bl = base.b * faceTint;
-        const start = vi;
-        for (let c = 0; c < 4; c++) {
-          // Corner order 0..3 walks the quad so (0,1,2)+(0,2,3) wind correctly.
-          const cu = c === 0 || c === 3 ? -1 : 1;
-          const cv = c < 2 ? -1 : 1;
-          const q = vi * 3;
-          const px = cx + ex + ux * su * cu + vx * sv * cv;
-          const py = cy + ey + uy * su * cu + vy * sv * cv;
-          const pz = cz + ez + uz * su * cu + vz * sv * cv;
-          positions[q] = px;
-          positions[q + 1] = py;
-          positions[q + 2] = pz;
-          normals[q] = nx;
-          normals[q + 1] = ny;
-          normals[q + 2] = nz;
-          colors[q] = r;
-          colors[q + 1] = g;
-          colors[q + 2] = bl;
+      const start = vi;
+      for (let c = 0; c < 4; c++) {
+        const cu = c === 0 || c === 3 ? -1 : 1;
+        const cv = c < 2 ? -1 : 1;
+        const q = vi * 3;
+        const px = cx + ex + ux * su * cu + vx * sv * cv;
+        const py = cy + ey + uy * su * cu + vy * sv * cv;
+        const pz = cz + ez + uz * su * cu + vz * sv * cv;
+
+        positions[q] = px;
+        positions[q + 1] = py;
+        positions[q + 2] = pz;
+        normals[q] = nx;
+        normals[q + 1] = ny;
+        normals[q + 2] = nz;
+        colors[q] = r;
+        colors[q + 1] = g;
+        colors[q + 2] = bl;
+
+        if (ny !== 0) {
           uvs[vi * 2] = px * 0.25;
           uvs[vi * 2 + 1] = pz * 0.25;
-          vi++;
-        }
-        indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
-        continue;
-      }
-
-      // Vertical face. Its in-plane v axis is world up for all four of them (see
-      // FACES), so a band is just a pair of heights and each corner takes the
-      // gradient at its own.
-      for (let r0 = 0; r0 < rows.length - 1; r0++) {
-        const yLo = rows[r0]!;
-        const yHi = rows[r0 + 1]!;
-        const start = vi;
-        for (let c = 0; c < 4; c++) {
-          const cu = c === 0 || c === 3 ? -1 : 1;
-          const wy = c < 2 ? yLo : yHi;
-          const t = faceTint * contactShade(wy, y0, y1, band, lip);
-          const q = vi * 3;
-          const px = cx + ex + ux * su * cu;
-          const pz = cz + ez + uz * su * cu;
-          positions[q] = px;
-          positions[q + 1] = wy;
-          positions[q + 2] = pz;
-          normals[q] = nx;
-          normals[q + 1] = 0;
-          normals[q + 2] = nz;
-          colors[q] = base.r * t;
-          colors[q + 1] = base.g * t;
-          colors[q + 2] = base.b * t;
+        } else {
           uvs[vi * 2] = nx !== 0 ? pz * 0.25 : px * 0.25;
-          uvs[vi * 2 + 1] = wy * 0.25;
-          vi++;
+          uvs[vi * 2 + 1] = py * 0.25;
         }
-        indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+        vi++;
       }
+      indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
     }
   }
 

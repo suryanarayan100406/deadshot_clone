@@ -1373,11 +1373,13 @@ function buildFoundry(): GameMap {
     wall(b, 'z', (HALF - 0.5) * s, -HALF, HALF, 0, PW, 1, 'concrete');
   }
 
-  // ── The roof structure ────────────────────────────────────────────────────
-  // The single biggest reason the hall used to read as a shoebox: a 10 m wall
-  // with nothing at the top of it gives the eye no way to measure the span. Five
-  // trusses with lamps hung off them fix that, and all of it is 3 m clear of
-  // anything a player can stand on.
+  // ── The roof & ceiling structure ──────────────────────────────────────────
+  // Enclosed factory corrugated roof slab capping the hall at y = 10.0m
+  br(b, 0, PW, 0, HALF * 2 + 1, 0.5, HALF * 2 + 1, 'concreteDark');
+  // Overhead industrial skylight monitor structures with clerestory vents
+  br(b, 0, PW + 0.5, 0, 16.0, 1.4, 38.0, 'metalDark');
+  br(b, 0, PW + 1.9, 0, 17.0, 0.3, 39.0, 'metal');
+
   const TRUSS_Z = [-16, -8, 0, 8, 16] as const;
   for (const z of TRUSS_Z) truss(p, 'x', -23, 23, 9.2, z);
   for (const x of [-16, -8, 8, 16]) {
@@ -1603,6 +1605,10 @@ function buildOverpass(): GameMap {
       west: sx > 0,
       east: sx < 0,
     });
+    // Exterior access stairs climbing to the 5.4m building roof deck
+    stairs(b, 21.8 * sx, 0, 17.5 * sz, sz > 0 ? 'z+' : 'z-', 14, 5.4 / 14, 0.42, 2.2, 'concreteDark');
+    br(b, 21.8 * sx, 5.0, 20.5 * sz, 2.2, 0.4, 2.5, 'concreteDark');
+
     br(b, 15 * sx, 0, 20 * sz + 3.5 * -sz, 2, 1.2, 2, 'wood');
     br(b, 11 * sx, 0, 8 * sz, 2.2, 1.4, 2.2, 'wood');
     br(b, 26 * sx, 0, 12 * sz, 1.8, 2.6, 1.8, 'rust');
@@ -1742,11 +1748,12 @@ function buildMeridian(): GameMap {
     ringAt(p, 6, ROOF + 1.5, rz, 0.56, 0.07, 'metalDark', 'y');
     pr(p, 'dome', 6, ROOF + 2.8, rz, 0.5, 0.4, 'rust');
 
-    // Conduit along the back parapet, a ladder up the flank clear of the doorway,
-    // and lamps under the roof — the inside of a base was lit by nothing at all and
-    // read as a hole in a wall rather than a room somebody works in.
+    // Exterior access staircase climbing up to the base roof (y = 5.4m)
+    stairs(b, 11.6, 0, (24 - 2.0 * s) * s, s > 0 ? 'z+' : 'z-', 14, 5.4 / 14, 0.40, 1.8, 'concreteDark');
+    br(b, 11.6, 5.0, 24 * s, 1.8, 0.4, 2.4, 'concreteDark');
+
+    // Conduit along the back parapet, and lamps under the roof
     pipe(p, 'x', -11, 11, ROOF + 0.6, (24 + 5.5) * s, 0.09, 'metal');
-    ladder(p, 10.55, 0, 20.6 * s, 5, 'x');
     for (const x of [-7, 0, 7]) lamp(p, x, 5, 24 * s, 0.35);
   }
 
@@ -2097,12 +2104,13 @@ function buildRefinery(): GameMap {
     wall(b, 'z', -24.5, r0, r1, ROOF, 0.9, 0.5, 'concreteDark');
     wall(b, 'z', 24.5, r0, r1, ROOF, 0.9, 0.5, 'concreteDark');
 
-    // Interior mezzanine down one end, and the flight up to it. Puts a shooter
-    // above the door without giving them the roof.
+    // Interior mezzanine down one end, and the flight up to it
     const MZ = 2.6;
     br(b, 19, MZ, cz, 10, 0.4, 12, 'metal');
     guard(b, p, 'z', 14, Math.min(cz - 6, cz + 6), Math.max(cz - 6, cz + 6), MZ + 0.4, 'metal');
     stairs(b, 10, 0, cz, 'x+', 9, MZ / 9 + 0.045, 0.5, 4, 'metal');
+    // Upper stairs climbing from mezzanine directly up to the hall roof deck (ROOF = 5.4m)
+    stairs(b, 21.5, MZ + 0.4, cz - 2.0 * s, s > 0 ? 'z+' : 'z-', 7, (ROOF - (MZ + 0.4)) / 7, 0.42, 2.4, 'metal');
 
     // Plant against the outward wall: reactors, drums, the overhead line feeding
     // them, and the lamps. All of it clear of the door and of the three spawn
@@ -2121,9 +2129,6 @@ function buildRefinery(): GameMap {
     // Clear of the flight at x 10..14: a lamp is 2.6 m of headroom or it is
     // something a player on the fourth step walks their face into.
     for (const x of [-16, -6, 4]) lamp(p, x, HALL_H, cz, 0.4);
-    // On the end wall, not on the mezzanine's own edge: a ladder has to be flush
-    // to something full height or it is a decoration hanging in a doorway.
-    ladder(p, 23.5, 0, cz + 4 * s, MZ + 0.4, 'x');
 
     // Roof plant. Solid, so every silhouette up there is something to hide behind
     // rather than something to be surprised by.
@@ -2169,11 +2174,11 @@ function buildRefinery(): GameMap {
 
   // ── West: the loading dock ────────────────────────────────────────────────
   // Two aprons, not one, with a lane between them at ground level where the pipe
-  // rack crosses. The rack's columns then land on ground instead of standing in
-  // the middle of a slab, the lamps under its deck have the 2.6 m they need, and
-  // the dock gains the thing a flat 14x44 platform did not have: a way through it
-  // that is not over it. The 1.2 m lip is the step, and a jump clears 1.24.
-  for (const s of [-1, 1] as const) br(b, -35, 0, 12.75 * s, 14, 1.2, 18.5, 'concrete');
+  // rack crosses.
+  for (const s of [-1, 1] as const) {
+    br(b, -35, 0, 12.75 * s, 14, 1.2, 18.5, 'concrete');
+    stairs(b, -35, 0, 23.5 * s, s > 0 ? 'z-' : 'z+', 4, 1.2 / 4, 0.5, 6.0, 'concreteDark');
+  }
   for (const s of [-1, 1] as const) trimWall(b, 'x', 22 * s, -42, -28, 1.2, 0.5, 'concreteDark', 7);
   // Containers. Two heights, adjacent, so the tall ones are cover and the short
   // ones are the step onto them — a 2.4 m box with nothing beside it is a wall.
