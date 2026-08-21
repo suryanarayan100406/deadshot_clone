@@ -345,6 +345,8 @@ class Game {
 
     this.lastFrame = performance.now();
     this.raf = requestAnimationFrame(this.frame);
+
+    this.menu.checkAutoJoin();
   }
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -607,10 +609,10 @@ class Game {
   private onStatus(status: NetStatus, detail?: string): void {
     switch (status) {
       case 'connecting':
-        this.menu.setPlayEnabled(false, 'Connecting…');
+        this.menu?.setPlayEnabled(false, 'Connecting…');
         break;
       case 'joining':
-        this.menu.setPlayEnabled(false, 'Joining…');
+        this.menu?.setPlayEnabled(false, 'Joining…');
         break;
       case 'live':
         break;
@@ -618,7 +620,7 @@ class Game {
       case 'error': {
         // A close we asked for has already been handled by `quit`.
         if (this.phase === 'menu') {
-          this.menu.setPlayEnabled(true);
+          this.menu?.setPlayEnabled(true);
           return;
         }
         this.leaveToMenu();

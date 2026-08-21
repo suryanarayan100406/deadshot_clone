@@ -202,8 +202,10 @@ export class Menu {
     settings.onChange((s) => {
       for (const fn of this.syncers) fn(s);
     });
+  }
 
-    // If the player arrived via an invite link, take them directly into the lobby immediately
+  /** If the player arrived via an invite link, take them directly into the lobby. */
+  checkAutoJoin(): void {
     if (this.autoJoinCode) {
       this.submit('join');
     }
